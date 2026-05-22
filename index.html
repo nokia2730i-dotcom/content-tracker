@@ -1340,55 +1340,86 @@ function parseInstagramHTML(html) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
-  const LABEL_MAP = {
-    'Време прављења':              'createdTime',
-    'Налози до којих сте допрли':  'reach',
-    'Прикази':                     'impressions',
-    'Свиђања':                     'likes',
-    'Коментари':                   'comments',
-    'Чувања':                      'saves',
-    'Дељења':                      'shares',
-    'Посете профилу':              'profileVisits'
+  const LABELS = [
+    'Време прављења',
+    'Налози до којих сте допрли',
+    'Прикази',
+    'Свиђања',
+    'Коментари',
+    'Чувања',
+    'Дељења',
+    'Посете профилу'
+  ];
+
+  const LABEL_TO_FIELD = {
+    'Време прављења':             'createdTime',
+    'Налози до којих сте допрли': 'reach',
+    'Прикази':                    'impressions',
+    'Свиђања':                    'likes',
+    'Коментари':                  'comments',
+    'Чувања':                     'saves',
+    'Дељења':                     'shares',
+    'Посете профилу':             'profileVisits'
   };
+
+  // Recognizes: "Свиђања", "Свиђања:", "Свиђања: 20"
+  function matchLabel(txt) {
+    for (const label of LABELS) {
+      if (txt === label || txt === label + ':') {
+        return { field: LABEL_TO_FIELD[label], embeddedValue: null };
+      }
+      if (txt.startsWith(label + ':')) {
+        return { field: LABEL_TO_FIELD[label], embeddedValue: txt.slice(label.length + 1).trim() };
+      }
+    }
+    return null;
+  }
+
+  function nextValue(el) {
+    // Direct next sibling
+    let s = el.nextElementSibling;
+    if (s) return s.textContent.trim();
+    // Parent's next sibling
+    s = el.parentElement?.nextElementSibling;
+    if (s) return s.textContent.trim();
+    // Grandparent's next sibling
+    s = el.parentElement?.parentElement?.nextElementSibling;
+    if (s) return s.textContent.trim();
+    return '';
+  }
 
   const pairs = [];
 
-  // Strategy 1: leaf element → next sibling value
-  const all = Array.from(doc.querySelectorAll('*'));
-  for (const el of all) {
+  // Primary: walk leaf elements
+  for (const el of doc.querySelectorAll('*')) {
     if (el.children.length > 0) continue;
     const txt = el.textContent.trim();
-    if (!LABEL_MAP[txt]) continue;
-    let val = '';
-    const nextSib = el.nextElementSibling;
-    if (nextSib) {
-      val = nextSib.textContent.trim();
-    } else {
-      const parentNext = el.parentElement?.nextElementSibling;
-      if (parentNext) val = parentNext.textContent.trim();
-    }
-    pairs.push({ field: LABEL_MAP[txt], value: val });
+    if (!txt) continue;
+    const m = matchLabel(txt);
+    if (!m) continue;
+    const value = m.embeddedValue !== null ? m.embeddedValue : nextValue(el);
+    pairs.push({ field: m.field, value });
   }
 
-  // Strategy 2: table rows <td>label</td><td>value</td>
+  // Fallback: <tr><td>label</td><td>value</td></tr>
   for (const row of doc.querySelectorAll('tr')) {
     const cells = row.querySelectorAll('td, th');
     if (cells.length >= 2) {
-      const lbl = cells[0].textContent.trim();
-      if (LABEL_MAP[lbl]) pairs.push({ field: LABEL_MAP[lbl], value: cells[1].textContent.trim() });
+      const m = matchLabel(cells[0].textContent.trim());
+      if (m) pairs.push({ field: m.field, value: cells[1].textContent.trim() });
     }
   }
 
-  // Strategy 3: <dt>/<dd> pairs
+  // Fallback: <dt>/<dd>
   for (const dt of doc.querySelectorAll('dt')) {
-    const lbl = dt.textContent.trim();
-    if (LABEL_MAP[lbl]) {
+    const m = matchLabel(dt.textContent.trim());
+    if (m) {
       const dd = dt.nextElementSibling;
-      if (dd && dd.tagName === 'DD') pairs.push({ field: LABEL_MAP[lbl], value: dd.textContent.trim() });
+      if (dd?.tagName === 'DD') pairs.push({ field: m.field, value: dd.textContent.trim() });
     }
   }
 
-  // Group by post: new post starts at each 'createdTime'
+  // Group into posts — 'createdTime' marks start of each post
   const posts = [];
   let current = null;
   for (const pair of pairs) {
@@ -1396,7 +1427,7 @@ function parseInstagramHTML(html) {
       if (current) posts.push(current);
       current = { createdTime: pair.value };
     } else if (current) {
-      if (!current[pair.field]) current[pair.field] = pair.value; // first occurrence wins
+      if (!current[pair.field]) current[pair.field] = pair.value;
     }
   }
   if (current) posts.push(current);
@@ -1406,44 +1437,67 @@ function parseInstagramHTML(html) {
 
 function parseIgDate(str) {
   if (!str) return '';
-  // ISO format: 2024-01-15T14:30:00+00:00
+
+  // ISO 8601
   const d = new Date(str);
   if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
 
-  // YYYY-MM-DD anywhere in string
-  const isoMatch = str.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  // YYYY-MM-DD substring
+  const iso = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
 
-  // Serbian Cyrillic / Latin month names
   const MONTHS = {
-    'јануар':1,'јануара':1,'january':1,'jan':1,
-    'фебруар':2,'фебруара':2,'february':2,'feb':2,
-    'март':3,'марта':3,'march':3,'mar':3,
-    'април':4,'априла':4,'april':4,'apr':4,
-    'мај':5,'маја':5,'may':5,
-    'јун':6,'јуна':6,'june':6,'jun':6,
-    'јул':7,'јула':7,'july':7,'jul':7,
-    'август':8,'августа':8,'august':8,'aug':8,
-    'септембар':9,'септембра':9,'september':9,'sep':9,
-    'октобар':10,'октобра':10,'october':10,'oct':10,
-    'новембар':11,'новембра':11,'november':11,'nov':11,
-    'децембар':12,'децембра':12,'december':12,'dec':12,
-    'januar':1,'januara':1,'februar':2,'februara':2,
-    'mart':3,'marta':3,'april':4,'aprila':4,'maj':5,'maja':5,
-    'jun':6,'juna':6,'jul':7,'jula':7,'avgust':8,'avgusta':8,
-    'septembar':9,'septembra':9,'oktobar':10,'oktobra':10,
-    'novembar':11,'novembra':11,'decembar':12,'decembra':12
+    // Cyrillic nominative + genitive
+    'јануар':'01','јануара':'01','фебруар':'02','фебруара':'02',
+    'март':'03','марта':'03','април':'04','априла':'04',
+    'мај':'05','маја':'05','јун':'06','јуна':'06',
+    'јул':'07','јула':'07','август':'08','августа':'08',
+    'септембар':'09','септембра':'09','октобар':'10','октобра':'10',
+    'новембар':'11','новембра':'11','децембар':'12','децембра':'12',
+    // Latin
+    'januar':'01','januara':'01','februar':'02','februara':'02',
+    'mart':'03','marta':'03','april':'04','aprila':'04',
+    'maj':'05','maja':'05','jun':'06','juna':'06',
+    'jul':'07','jula':'07','avgust':'08','avgusta':'08',
+    'septembar':'09','septembra':'09','oktobar':'10','oktobra':'10',
+    'novembar':'11','novembra':'11','decembar':'12','decembra':'12',
+    // English
+    'january':'01','jan':'01','february':'02','feb':'02',
+    'march':'03','mar':'03','april':'04','apr':'04',
+    'may':'05','june':'06','jun':'06','july':'07','jul':'07',
+    'august':'08','aug':'08','september':'09','sep':'09',
+    'october':'10','oct':'10','november':'11','nov':'11',
+    'december':'12','dec':'12'
   };
-  const lower = str.toLowerCase();
-  for (const [name, num] of Object.entries(MONTHS)) {
-    if (lower.includes(name)) {
-      const yearM = str.match(/\d{4}/);
-      const dayM  = str.match(/\b(\d{1,2})\b/);
-      if (yearM && dayM) {
-        return `${yearM[0]}-${String(num).padStart(2,'0')}-${dayM[1].padStart(2,'0')}`;
+
+  // Format: "мај 18, 2026 3:54 пре подне"  →  MONTH DAY, YEAR
+  const fmt1 = str.match(/(\S+)\s+(\d{1,2}),\s*(\d{4})/);
+  if (fmt1) {
+    const mo = MONTHS[fmt1[1]] || MONTHS[fmt1[1].toLowerCase()];
+    if (mo) return `${fmt1[3]}-${mo}-${fmt1[2].padStart(2, '0')}`;
+  }
+
+  // Format: "18. мај 2026"  →  DAY. MONTH YEAR
+  const fmt2 = str.match(/(\d{1,2})\.\s*(\S+)\s+(\d{4})/);
+  if (fmt2) {
+    const mo = MONTHS[fmt2[2]] || MONTHS[fmt2[2].toLowerCase()];
+    if (mo) return `${fmt2[3]}-${mo}-${fmt2[1].padStart(2, '0')}`;
+  }
+
+  // Last resort: find any month name, then extract year and first 1-2 digit number
+  const yearM = str.match(/\d{4}/);
+  if (yearM) {
+    const lc = str.toLowerCase();
+    for (const [name, mo] of Object.entries(MONTHS)) {
+      if (lc.includes(name.toLowerCase())) {
+        // day: first 1-2 digit number surrounded by non-digit chars
+        const dayM = str.match(/(?<!\d)(\d{1,2})(?!\d)/);
+        if (dayM) return `${yearM[0]}-${mo}-${dayM[1].padStart(2, '0')}`;
+        break;
       }
     }
   }
+
   return '';
 }
 
