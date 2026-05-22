@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="sr-Latn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Praćenje Performansi Sadržaja</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg:        #07070f;
+  --card:      #0f0f1a;
+  --card2:     #161625;
+  --border:    #1e1e35;
+  --primary:   #7c3aed;
+  --pri-light: #a78bfa;
+  --accent:    #06b6d4;
+  --green:     #10b981;
+  --amber:     #f59e0b;
+  --pink:      #ec4899;
+  --red:       #ef4444;
+  --text:      #e2e8f0;
+  --muted:     #64748b;
+  --subtle:    #94a3b8;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.header {
+  position: sticky; top: 0; z-index: 200;
+  background: rgba(7,7,15,.85);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: .875rem 2rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.logo {
+  font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; white-space: nowrap;
+  background: linear-gradient(135deg, var(--pri-light), var(--accent));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.nav { display: flex; gap: .375rem; }
+.nav-btn {
+  padding: .45rem 1rem; border-radius: 7px; border: none;
+  background: transparent; color: var(--muted); cursor: pointer;
+  font-size: .825rem; font-weight: 600; transition: all .18s; white-space: nowrap;
+}
+.nav-btn:hover { background: var(--card2); color: var(--text); }
+.nav-btn.active { background: var(--primary); color: #fff; }
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.main { max-width: 1440px; margin: 0 auto; padding: 2rem; }
+.page { display: none; }
+.page.active { display: block; }
+
+.page-head { margin-bottom: 1.75rem; }
+.page-title { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+.page-sub { color: var(--muted); font-size: .875rem; margin-top: .25rem; }
+
+/* ── Cards ──────────────────────────────────────────────────── */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1.5rem;
+}
+.card-label {
+  font-size: .7rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: .5rem;
+}
+
+/* ── Stats grid ─────────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem; margin-bottom: 1.5rem;
+}
+.stat {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1.25rem 1.5rem;
+  position: relative; overflow: hidden;
+}
+.stat::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--accent-color, var(--primary));
+}
+.stat-val { font-size: 2rem; font-weight: 800; line-height: 1; }
+.stat-label { font-size: .75rem; color: var(--muted); margin-top: .4rem; font-weight: 500; }
+
+/* ── Charts ─────────────────────────────────────────────────── */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1.25rem; margin-bottom: 1.5rem;
+}
+.chart-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem;
+}
+.chart-title {
+  font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 1.25rem;
+}
+
+/* ── Form ───────────────────────────────────────────────────── */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.1rem; }
+.full { grid-column: 1 / -1; }
+.f-group { display: flex; flex-direction: column; gap: .35rem; }
+label { font-size: .7rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--subtle); }
+
+input, select, textarea {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 9px;
+  padding: .6rem .9rem; color: var(--text); font-size: .9rem;
+  transition: border-color .18s, box-shadow .18s; font-family: inherit; width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(124,58,237,.15);
+}
+textarea { resize: vertical; min-height: 90px; }
+select option { background: #1a1a2e; }
+
+.metrics-wrap {
+  background: linear-gradient(135deg, rgba(124,58,237,.06), rgba(6,182,212,.04));
+  border: 1px solid rgba(124,58,237,.18); border-radius: 11px; padding: 1.1rem;
+}
+.metrics-label {
+  font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--pri-light); margin-bottom: .85rem;
+}
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: .75rem; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .6rem 1.2rem; border-radius: 9px; border: none;
+  cursor: pointer; font-size: .875rem; font-weight: 700;
+  font-family: inherit; transition: all .18s; white-space: nowrap;
+}
+.btn-primary { background: linear-gradient(135deg, var(--primary), #6d28d9); color: #fff; }
+.btn-primary:hover { opacity: .88; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(124,58,237,.35); }
+.btn-accent  { background: linear-gradient(135deg, var(--accent), #0891b2); color: #fff; }
+.btn-accent:hover  { opacity: .88; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(6,182,212,.3); }
+.btn-ghost  { background: var(--card2); color: var(--subtle); }
+.btn-ghost:hover { color: var(--text); }
+.btn-danger { background: rgba(239,68,68,.1); color: var(--red); border: 1px solid rgba(239,68,68,.2); padding: .3rem .65rem; font-size: .75rem; }
+.btn-danger:hover { background: var(--red); color: #fff; }
+
+/* ── Table ──────────────────────────────────────────────────── */
+.tbl-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th {
+  padding: .7rem 1rem; text-align: left; font-size: .68rem; font-weight: 700;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap;
+}
+th:hover { color: var(--subtle); }
+th.s-active { color: var(--pri-light); }
+td { padding: .8rem 1rem; border-bottom: 1px solid rgba(30,30,53,.6); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: rgba(124,58,237,.04); }
+.sort-ico { opacity: .45; margin-left: 3px; font-size: .75em; }
+th.s-active .sort-ico { opacity: 1; }
+
+/* ── Badges ─────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center;
+  padding: .22rem .65rem; border-radius: 20px;
+  font-size: .68rem; font-weight: 800; letter-spacing: .03em; white-space: nowrap;
+}
+.b-ig  { background: linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045); color: #fff; }
+.b-li  { background: #0077b5; color: #fff; }
+.b-edu { background: rgba(6,182,212,.14);  color: #06b6d4; }
+.b-pro { background: rgba(245,158,11,.14); color: #f59e0b; }
+.b-sto { background: rgba(236,72,153,.14); color: #ec4899; }
+.b-soc { background: rgba(16,185,129,.14); color: #10b981; }
+.b-eng { background: rgba(124,58,237,.14); color: #a78bfa; }
+
+/* ── Filters ─────────────────────────────────────────────────── */
+.filter-bar { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
+.filter-bar select, .filter-bar input { padding: .42rem .75rem; font-size: .8rem; width: auto; }
+
+/* ── ER color ───────────────────────────────────────────────── */
+.er-hi { color: var(--green); font-weight: 700; }
+.er-md { color: var(--amber); font-weight: 700; }
+.er-lo { color: var(--red);   font-weight: 700; }
+
+/* ── Progress bar ───────────────────────────────────────────── */
+.prog { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 5px; }
+.prog-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--primary), var(--pri-light)); }
+
+/* ── Insights ───────────────────────────────────────────────── */
+.ins-grid { display: flex; flex-direction: column; gap: 1.1rem; }
+.ins-card {
+  background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--primary);
+  border-radius: 14px; padding: 1.5rem;
+}
+.ins-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .85rem; }
+.ins-ico {
+  width: 38px; height: 38px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;
+}
+.ins-title { font-size: 1rem; font-weight: 800; }
+.ins-body { color: var(--subtle); font-size: .875rem; line-height: 1.65; }
+.ins-body strong { color: var(--text); }
+
+.rec-list { list-style: none; display: flex; flex-direction: column; gap: .55rem; margin-top: .5rem; }
+.rec-list li { display: flex; gap: .6rem; font-size: .875rem; color: var(--subtle); align-items: flex-start; line-height: 1.5; }
+.rec-list li::before { content: '→'; color: var(--pri-light); font-weight: 800; flex-shrink: 0; padding-top: .05rem; }
+.rec-list li strong { color: var(--text); }
+
+.mini-platform {
+  background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+  padding: .75rem 1rem; flex: 1;
+}
+
+/* ── Toast ──────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 2rem; right: 2rem; z-index: 999;
+  background: var(--green); color: #fff; padding: .7rem 1.25rem;
+  border-radius: 9px; font-size: .875rem; font-weight: 700;
+  transform: translateY(120%); opacity: 0; transition: all .3s cubic-bezier(.34,1.56,.64,1);
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+
+/* ── Empty state ────────────────────────────────────────────── */
+.empty { text-align: center; padding: 3.5rem 1rem; color: var(--muted); }
+.empty-ico { font-size: 2.8rem; margin-bottom: 1rem; }
+.empty-title { font-size: 1rem; font-weight: 700; color: var(--subtle); margin-bottom: .35rem; }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .main { padding: 1rem; }
+  .header { padding: .75rem 1rem; }
+  .nav-btn { padding: .4rem .55rem; font-size: .72rem; }
+  .logo { font-size: .95rem; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .charts-grid { grid-template-columns: 1fr; }
+  .stat-val { font-size: 1.5rem; }
+}
+
+/* ── Claude AI integracija ───────────────────────────────────── */
+.ins-btn-row { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1.75rem; }
+
+.api-key-row {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 1rem 1.25rem; display: flex; align-items: center; gap: .75rem;
+  flex-wrap: wrap; margin-bottom: 1.25rem;
+}
+.api-key-lbl {
+  font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap;
+}
+.api-key-row input {
+  flex: 1; min-width: 200px; font-family: 'Courier New', monospace; font-size: .82rem; letter-spacing: .04em;
+}
+.btn-test {
+  background: rgba(6,182,212,.1); color: var(--accent);
+  border: 1px solid rgba(6,182,212,.25); padding: .5rem .95rem; font-size: .78rem;
+}
+.btn-test:hover { background: var(--accent); color: #fff; }
+
+.claude-loading { display: none; text-align: center; padding: 3.5rem 1rem; margin-bottom: 1.5rem; }
+.claude-loading.show { display: block; }
+.spin {
+  width: 46px; height: 46px; margin: 0 auto 1rem;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: rotating .75s linear infinite;
+}
+@keyframes rotating { to { transform: rotate(360deg); } }
+.spin-lbl { color: var(--muted); font-size: .875rem; }
+.spin-lbl::after { content: ''; animation: ellipsis 1.4s steps(4,end) infinite; }
+@keyframes ellipsis { 0%,20%{content:''} 40%{content:'.'} 60%{content:'..'} 80%,100%{content:'...'} }
+
+.claude-result { display: none; margin-bottom: 1.5rem; }
+.claude-result.show { display: block; }
+
+.claude-card { border: 1px solid rgba(124,58,237,.3); border-radius: 14px; overflow: hidden; }
+.claude-card-head {
+  background: linear-gradient(135deg, rgba(124,58,237,.15), rgba(6,182,212,.07));
+  border-bottom: 1px solid rgba(124,58,237,.18);
+  padding: 1.2rem 1.5rem; display: flex; align-items: center; gap: .85rem;
+}
+.claude-ico {
+  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+}
+.claude-card-title { font-size: 1rem; font-weight: 800; }
+.claude-card-sub { font-size: .75rem; color: var(--muted); margin-top: .15rem; }
+.claude-body {
+  padding: 1.5rem; background: var(--card);
+  color: var(--subtle); font-size: .9rem; line-height: 1.8;
+}
+.claude-body strong { color: var(--text); }
+.claude-sec-head {
+  color: var(--pri-light); font-weight: 800; font-size: .82rem;
+  text-transform: uppercase; letter-spacing: .06em;
+  margin: 1.3rem 0 .45rem; padding-bottom: .35rem;
+  border-bottom: 1px solid rgba(124,58,237,.15); display: block;
+}
+.claude-li {
+  display: flex; gap: .55rem; padding: .22rem 0; align-items: flex-start;
+}
+.claude-li-arrow { color: var(--pri-light); font-weight: 800; flex-shrink: 0; margin-top: .05rem; }
+.claude-li-dot   { color: var(--accent); flex-shrink: 0; margin-top: .1rem; }
+
+.claude-err {
+  background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.2);
+  border-radius: 12px; padding: 1.1rem 1.35rem;
+  color: var(--red); font-size: .875rem; line-height: 1.7;
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════ HEADER ════════════════════ -->
+<header class="header">
+  <div class="logo">⚡ ContentTracker</div>
+  <nav class="nav">
+    <button class="nav-btn active" onclick="nav('dashboard')">Pregled</button>
+    <button class="nav-btn" onclick="nav('add')">+ Dodaj objavu</button>
+    <button class="nav-btn" onclick="nav('posts')">Sve objave</button>
+    <button class="nav-btn" onclick="nav('insights')">AI Uvidi</button>
+  </nav>
+</header>
+
+<div class="main">
+
+  <!-- ════════════════ DASHBOARD ════════════════ -->
+  <div id="pg-dashboard" class="page active">
+    <div class="page-head">
+      <div class="page-title">Pregled</div>
+      <div class="page-sub">Brzi pregled performansi tvog sadržaja</div>
+    </div>
+    <div class="stats-grid" id="dash-stats"></div>
+    <div class="charts-grid">
+      <div class="chart-card"><div class="chart-title">Prosečna stopa angažovanja po kategoriji</div><canvas id="ch-cat"></canvas></div>
+      <div class="chart-card"><div class="chart-title">Objave po platformi</div><canvas id="ch-plat"></canvas></div>
+      <div class="chart-card"><div class="chart-title">Prosečna stopa angažovanja po tipu objave</div><canvas id="ch-type"></canvas></div>
+      <div class="chart-card"><div class="chart-title">Objave tokom vremena (mesečno)</div><canvas id="ch-time"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Top 5 objava po stopi angažovanja</div>
+      <div id="dash-top"></div>
+    </div>
+  </div>
+
+  <!-- ════════════════ ADD POST ════════════════ -->
+  <div id="pg-add" class="page">
+    <div class="page-head">
+      <div class="page-title">Dodaj novu objavu</div>
+      <div class="page-sub">Unesi novi sadržaj i njegove metrike</div>
+    </div>
+    <div class="card">
+      <form id="post-form" autocomplete="off">
+        <div class="form-grid">
+
+          <div class="f-group">
+            <label>Platforma</label>
+            <select name="platform" required>
+              <option value="">Izaberi platformu…</option>
+              <option>Instagram</option>
+              <option>LinkedIn</option>
+            </select>
+          </div>
+
+          <div class="f-group">
+            <label>Datum objave</label>
+            <input type="date" name="date" required>
+          </div>
+
+          <div class="f-group">
+            <label>Kategorija sadržaja</label>
+            <select name="category" required>
+              <option value="">Izaberi kategoriju…</option>
+              <option value="Education">Edukacija</option>
+              <option value="Product Promotion">Promocija proizvoda</option>
+              <option value="Personal Story">Lična priča / Storytelling</option>
+              <option value="Social Proof">Socijalni dokaz</option>
+              <option value="Engagement Post">Angažovana objava</option>
+            </select>
+          </div>
+
+          <div class="f-group">
+            <label>Tip objave</label>
+            <select name="postType" required>
+              <option value="">Izaberi tip…</option>
+              <option>Karusel</option>
+              <option>Reel</option>
+              <option>Slika</option>
+              <option>Tekstualna objava</option>
+              <option>Video</option>
+            </select>
+          </div>
+
+          <div class="f-group full">
+            <label>Opis (Caption)</label>
+            <textarea name="caption" placeholder="Unesi opis ovde…" style="min-height:110px;"></textarea>
+          </div>
+
+          <div class="full">
+            <div class="metrics-wrap">
+              <div class="metrics-label">Metrike performansi</div>
+              <div class="metrics-grid">
+                <div class="f-group"><label>Doseg</label><input type="number" name="reach"      min="0" placeholder="0"></div>
+                <div class="f-group"><label>Lajkovi</label><input type="number" name="likes"      min="0" placeholder="0"></div>
+                <div class="f-group"><label>Komentari</label><input type="number" name="comments"  min="0" placeholder="0"></div>
+                <div class="f-group"><label>Čuvanja</label><input type="number" name="saves"      min="0" placeholder="0"></div>
+                <div class="f-group"><label>Deljenja</label><input type="number" name="shares"     min="0" placeholder="0"></div>
+                <div class="f-group"><label>Klikovi na link</label><input type="number" name="linkClicks" min="0" placeholder="0"></div>
+                <div class="f-group"><label>Primljene poruke (DM)</label><input type="number" name="dms"       min="0" placeholder="0"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="f-group full">
+            <label>Beleške</label>
+            <textarea name="notes" placeholder="Zapažanja, kontekst ili beleške o ovoj objavi…" style="min-height:70px;"></textarea>
+          </div>
+
+        </div>
+        <div style="margin-top:1.5rem; display:flex; gap:.75rem; flex-wrap:wrap;">
+          <button type="submit" class="btn btn-primary">Sačuvaj objavu</button>
+          <button type="reset"  class="btn btn-ghost">Obriši unos</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ════════════════ ALL POSTS ════════════════ -->
+  <div id="pg-posts" class="page">
+    <div class="page-head">
+      <div class="page-title">Sve objave</div>
+      <div class="page-sub">Pretraži, filtriraj i sortiraj celokupnu istoriju sadržaja</div>
+    </div>
+    <div class="card">
+      <div class="filter-bar">
+        <select id="fp" onchange="renderTable()">
+          <option value="">Sve platforme</option>
+          <option>Instagram</option>
+          <option>LinkedIn</option>
+        </select>
+        <select id="fc" onchange="renderTable()">
+          <option value="">Sve kategorije</option>
+          <option value="Education">Edukacija</option>
+          <option value="Product Promotion">Promocija proizvoda</option>
+          <option value="Personal Story">Lična priča</option>
+          <option value="Social Proof">Socijalni dokaz</option>
+          <option value="Engagement Post">Angažovana objava</option>
+        </select>
+        <select id="ft" onchange="renderTable()">
+          <option value="">Svi tipovi</option>
+          <option>Karusel</option>
+          <option>Reel</option>
+          <option>Slika</option>
+          <option>Tekstualna objava</option>
+          <option>Video</option>
+        </select>
+        <input id="fs" type="text" placeholder="Pretraži opise / beleške…" oninput="renderTable()" style="min-width:190px;">
+      </div>
+      <div class="tbl-scroll" id="tbl-wrap"></div>
+    </div>
+  </div>
+
+  <!-- ════════════════ AI INSIGHTS ════════════════ -->
+  <div id="pg-insights" class="page">
+    <div class="page-head">
+      <div class="page-title">AI Uvidi</div>
+      <div class="page-sub">Lokalna analiza podataka i Claude AI dubinska analiza sadržaja</div>
+    </div>
+
+    <div class="api-key-row">
+      <span class="api-key-lbl">Anthropic API ključ</span>
+      <input id="api-key-inp" type="password" placeholder="sk-ant-api03-…" oninput="saveApiKey(this.value)">
+      <button class="btn btn-ghost" id="api-key-toggle" onclick="toggleApiKey()" style="padding:.5rem .85rem;font-size:.78rem;flex-shrink:0">Prikaži</button>
+      <button class="btn btn-test" onclick="testApiKey()">Testiraj API ključ</button>
+    </div>
+
+    <div class="ins-btn-row">
+      <button class="btn btn-accent" onclick="buildInsights()" style="padding:.7rem 2rem;font-size:.95rem;">
+        ✨ Lokalni uvidi
+      </button>
+      <button class="btn btn-primary" onclick="askClaude()" style="padding:.7rem 2rem;font-size:.95rem;">
+        🤖 Claude AI analiza
+      </button>
+    </div>
+
+    <!-- Loading stanje -->
+    <div class="claude-loading" id="claude-loading">
+      <div class="spin"></div>
+      <div class="spin-lbl">Claude analizira tvoj sadržaj</div>
+    </div>
+
+    <!-- Claude rezultat -->
+    <div class="claude-result" id="claude-result"></div>
+
+    <div id="ins-wrap"></div>
+  </div>
+
+</div><!-- /main -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════
+const KEY = 'cpt_v1';
+const load  = ()  => JSON.parse(localStorage.getItem(KEY) || '[]');
+const store = (d) => localStorage.setItem(KEY, JSON.stringify(d));
+
+function addPost(p)  { const d = load(); p.id = Date.now()+''; d.push(p); store(d); }
+function delPost(id) { store(load().filter(p => p.id !== id)); }
+
+// ═══════════════════════════════════════════════
+// MATHS
+// ═══════════════════════════════════════════════
+const n = v => Number(v) || 0;
+
+function er(p) {
+  const reach = n(p.reach);
+  if (!reach) return 0;
+  return (n(p.likes) + n(p.comments) + n(p.saves) + n(p.shares)) / reach * 100;
+}
+
+function totalEng(p) {
+  return n(p.likes) + n(p.comments) + n(p.saves) + n(p.shares) + n(p.linkClicks) + n(p.dms);
+}
+
+function groupBy(arr, key) {
+  return arr.reduce((acc, x) => {
+    const k = x[key] || 'Nepoznato';
+    (acc[k] = acc[k] || []).push(x);
+    return acc;
+  }, {});
+}
+
+function avgER(posts) {
+  const w = posts.filter(p => n(p.reach) > 0);
+  if (!w.length) return 0;
+  return w.reduce((s, p) => s + er(p), 0) / w.length;
+}
+
+function best(obj) {
+  return Object.entries(obj).sort((a,b) => avgER(b[1]) - avgER(a[1]))[0] || ['—', []];
+}
+
+// Srpska množina za "objava"
+function brObjava(num) {
+  const r10 = num % 10, r100 = num % 100;
+  if (r100 >= 11 && r100 <= 14) return num + ' objava';
+  if (r10 === 1) return num + ' objava';
+  if (r10 >= 2 && r10 <= 4) return num + ' objave';
+  return num + ' objava';
+}
+
+// ═══════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════
+const PAGES = ['dashboard','add','posts','insights'];
+
+function nav(page) {
+  PAGES.forEach((p, i) => {
+    document.getElementById('pg-'+p).classList.toggle('active', p === page);
+    document.querySelectorAll('.nav-btn')[i].classList.toggle('active', p === page);
+  });
+  if (page === 'dashboard') renderDash();
+  if (page === 'posts')     renderTable();
+  if (page === 'insights' && load().length) buildInsights();
+}
+
+// ═══════════════════════════════════════════════
+// FORM
+// ═══════════════════════════════════════════════
+document.querySelector('input[name=date]').valueAsDate = new Date();
+
+document.getElementById('post-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target));
+  addPost(data);
+  e.target.reset();
+  document.querySelector('input[name=date]').valueAsDate = new Date();
+  toast('Objava uspešno sačuvana!');
+  nav('dashboard');
+});
+
+// ═══════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════
+function toast(msg, color = '#10b981') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = color;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ═══════════════════════════════════════════════
+// BADGES
+// ═══════════════════════════════════════════════
+function platBadge(v) {
+  const cls = v === 'Instagram' ? 'b-ig' : 'b-li';
+  return `<span class="badge ${cls}">${v||'—'}</span>`;
+}
+
+const CAT_CLS = {
+  'Education':         'b-edu',
+  'Product Promotion': 'b-pro',
+  'Personal Story':    'b-sto',
+  'Social Proof':      'b-soc',
+  'Engagement Post':   'b-eng'
+};
+const CAT_SR = {
+  'Education':         'Edukacija',
+  'Product Promotion': 'Promocija',
+  'Personal Story':    'Lična priča',
+  'Social Proof':      'Soc. dokaz',
+  'Engagement Post':   'Angažovanje'
+};
+
+function catBadge(v) {
+  return `<span class="badge ${CAT_CLS[v]||''}">${CAT_SR[v]||v||'—'}</span>`;
+}
+function erClass(v) { return v >= 5 ? 'er-hi' : v >= 2 ? 'er-md' : 'er-lo'; }
+
+// ═══════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════
+const CH = {};
+
+function renderDash() {
+  const posts = load();
+  renderStats(posts);
+  renderCharts(posts);
+  renderTopPosts(posts);
+}
+
+function renderStats(posts) {
+  const ig  = posts.filter(p => p.platform === 'Instagram').length;
+  const li  = posts.filter(p => p.platform === 'LinkedIn').length;
+  const totalReach = posts.reduce((s,p) => s + n(p.reach), 0);
+  const avgEr = posts.length ? avgER(posts) : 0;
+  const byCat  = groupBy(posts, 'category');
+  const byType = groupBy(posts, 'postType');
+  const [bCat]  = best(byCat);
+  const [bType] = best(byType);
+
+  const items = [
+    { v: posts.length,               label: 'Ukupno objava',         c: '#7c3aed' },
+    { v: ig,                         label: 'Instagram objave',       c: '#e1306c' },
+    { v: li,                         label: 'LinkedIn objave',        c: '#0077b5' },
+    { v: avgEr.toFixed(2)+'%',       label: 'Pros. stopa angažov.',   c: '#10b981' },
+    { v: totalReach.toLocaleString(), label: 'Ukupni doseg',          c: '#06b6d4' },
+    { v: CAT_SR[bCat] || bCat,       label: 'Top kategorija',         c: '#f59e0b', sm: true },
+    { v: bType,                      label: 'Top tip objave',          c: '#ec4899', sm: true },
+  ];
+
+  document.getElementById('dash-stats').innerHTML = items.map(it => `
+    <div class="stat" style="--accent-color:${it.c}">
+      <div class="stat-label">${it.label}</div>
+      <div class="stat-val" style="color:${it.c}; font-size:${it.sm ? '1.1rem' : '2rem'}">${it.v}</div>
+    </div>`).join('');
+}
+
+const CHART_DEFAULTS = {
+  responsive: true,
+  plugins: { legend: { labels: { color: '#64748b', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#64748b' }, grid: { color: '#1e1e35' } },
+    y: { ticks: { color: '#64748b' }, grid: { color: '#1e1e35' } },
+  }
+};
+
+function renderCharts(posts) {
+  Object.values(CH).forEach(c => c?.destroy());
+
+  // Kategorija SA
+  const byCat    = groupBy(posts, 'category');
+  const catKeys  = Object.keys(byCat);
+  const catLabels = catKeys.map(k => CAT_SR[k] || k);
+  const catPalette = ['#06b6d4','#f59e0b','#ec4899','#10b981','#a78bfa'];
+  CH.cat = new Chart('ch-cat', {
+    type: 'bar',
+    data: { labels: catLabels, datasets: [{ label: 'Pros. SA %', data: catKeys.map(k => avgER(byCat[k]).toFixed(2)), backgroundColor: catKeys.map((_,i) => catPalette[i % catPalette.length]), borderRadius: 7 }] },
+    options: { ...CHART_DEFAULTS, plugins: { ...CHART_DEFAULTS.plugins, legend: { display: false } } }
+  });
+
+  // Platforma donut
+  const ig = posts.filter(p => p.platform === 'Instagram').length;
+  const li = posts.filter(p => p.platform === 'LinkedIn').length;
+  CH.plat = new Chart('ch-plat', {
+    type: 'doughnut',
+    data: { labels: ['Instagram','LinkedIn'], datasets: [{ data: [ig, li], backgroundColor: ['#e1306c','#0077b5'], borderWidth: 0 }] },
+    options: { responsive: true, cutout: '68%', plugins: { legend: { labels: { color: '#94a3b8', padding: 16 } } } }
+  });
+
+  // Tip objave SA
+  const byType   = groupBy(posts, 'postType');
+  const typeKeys = Object.keys(byType);
+  CH.type = new Chart('ch-type', {
+    type: 'bar',
+    data: { labels: typeKeys, datasets: [{ label: 'Pros. SA %', data: typeKeys.map(k => avgER(byType[k]).toFixed(2)), backgroundColor: '#7c3aed', borderRadius: 7 }] },
+    options: { ...CHART_DEFAULTS, plugins: { ...CHART_DEFAULTS.plugins, legend: { display: false } } }
+  });
+
+  // Vremenska linija
+  const byMonth = {};
+  posts.forEach(p => { if (p.date) { const m = p.date.slice(0,7); byMonth[m] = (byMonth[m]||0)+1; } });
+  const months = Object.keys(byMonth).sort();
+  CH.time = new Chart('ch-time', {
+    type: 'line',
+    data: { labels: months, datasets: [{ label: 'Objave', data: months.map(m => byMonth[m]), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.12)', fill: true, tension: .4, pointBackgroundColor: '#7c3aed', pointRadius: 5 }] },
+    options: { ...CHART_DEFAULTS, plugins: { ...CHART_DEFAULTS.plugins, legend: { display: false } } }
+  });
+}
+
+function renderTopPosts(posts) {
+  const el = document.getElementById('dash-top');
+  const top = [...posts].filter(p => n(p.reach)).sort((a,b) => er(b)-er(a)).slice(0,5);
+  if (!top.length) { el.innerHTML = empty('📊','Još nema objava','Dodaj prvu objavu da vidiš top rezultate'); return; }
+  el.innerHTML = `
+    <div class="tbl-scroll"><table>
+      <thead><tr>
+        <th>Datum</th><th>Platforma</th><th>Kategorija</th><th>Tip</th>
+        <th>Doseg</th><th>Uk. angažov.</th><th>SA %</th>
+      </tr></thead>
+      <tbody>${top.map(p => `<tr>
+        <td>${p.date||'—'}</td>
+        <td>${platBadge(p.platform)}</td>
+        <td>${catBadge(p.category)}</td>
+        <td style="color:var(--subtle)">${p.postType||'—'}</td>
+        <td>${n(p.reach).toLocaleString()}</td>
+        <td>${totalEng(p).toLocaleString()}</td>
+        <td><span class="${erClass(er(p))}">${er(p).toFixed(2)}%</span></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+// ═══════════════════════════════════════════════
+// ALL POSTS TABLE
+// ═══════════════════════════════════════════════
+let sKey = 'date', sDir = -1;
+
+function setSort(k) { sDir = sKey === k ? sDir * -1 : -1; sKey = k; renderTable(); }
+
+function renderTable() {
+  let posts = load();
+  const fp = document.getElementById('fp')?.value;
+  const fc = document.getElementById('fc')?.value;
+  const ft = document.getElementById('ft')?.value;
+  const fs = document.getElementById('fs')?.value?.toLowerCase();
+
+  if (fp) posts = posts.filter(p => p.platform === fp);
+  if (fc) posts = posts.filter(p => p.category === fc || p.category?.startsWith(fc));
+  if (ft) posts = posts.filter(p => p.postType === ft);
+  if (fs) posts = posts.filter(p => (p.caption||'').toLowerCase().includes(fs) || (p.notes||'').toLowerCase().includes(fs));
+
+  posts.sort((a,b) => {
+    let av = sKey === 'er' ? er(a) : sKey === 'reach' ? n(a.reach) : (a[sKey]||'');
+    let bv = sKey === 'er' ? er(b) : sKey === 'reach' ? n(b.reach) : (b[sKey]||'');
+    return typeof av === 'string' ? av.localeCompare(bv) * sDir : (av - bv) * sDir;
+  });
+
+  const el = document.getElementById('tbl-wrap');
+  if (!posts.length) { el.innerHTML = empty('🔍','Nije pronađena nijedna objava','Pokušaj da promeniš filtere'); return; }
+
+  const h = (k, label) => `<th class="${sKey===k?'s-active':''}" onclick="setSort('${k}')">${label} <span class="sort-ico">${sKey===k?(sDir>0?'↑':'↓'):'↕'}</span></th>`;
+
+  el.innerHTML = `
+    <table>
+      <thead><tr>
+        ${h('date','Datum')} ${h('platform','Platforma')} ${h('category','Kategorija')} ${h('postType','Tip')}
+        ${h('reach','Doseg')} <th>Lajkovi</th><th>Kom.</th><th>Čuvanja</th><th>Deljenja</th>
+        <th>Klikovi</th><th>Poruke</th> ${h('er','SA %')} <th>Akcije</th>
+      </tr></thead>
+      <tbody>${posts.map(p => `<tr>
+        <td style="white-space:nowrap">${p.date||'—'}</td>
+        <td>${platBadge(p.platform)}</td>
+        <td>${catBadge(p.category)}</td>
+        <td style="color:var(--subtle);font-size:.8rem">${p.postType||'—'}</td>
+        <td>${n(p.reach).toLocaleString()}</td>
+        <td>${n(p.likes).toLocaleString()}</td>
+        <td>${n(p.comments).toLocaleString()}</td>
+        <td>${n(p.saves).toLocaleString()}</td>
+        <td>${n(p.shares).toLocaleString()}</td>
+        <td>${n(p.linkClicks).toLocaleString()}</td>
+        <td>${n(p.dms).toLocaleString()}</td>
+        <td><span class="${erClass(er(p))}">${er(p).toFixed(2)}%</span></td>
+        <td><button class="btn btn-danger" onclick="doDelete('${p.id}')">Obriši</button></td>
+      </tr>`).join('')}</tbody>
+    </table>
+    <div style="color:var(--muted);font-size:.78rem;margin-top:.75rem">${brObjava(posts.length)}</div>`;
+}
+
+function doDelete(id) {
+  if (!confirm('Obrisati ovu objavu? Ova akcija je nepovratna.')) return;
+  delPost(id);
+  renderTable();
+  toast('Objava obrisana', '#ef4444');
+}
+
+// ═══════════════════════════════════════════════
+// AI INSIGHTS
+// ═══════════════════════════════════════════════
+const DANI = ['Nedelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Subota'];
+
+function buildInsights() {
+  const posts = load();
+  const el = document.getElementById('ins-wrap');
+
+  if (!posts.length) {
+    el.innerHTML = empty('🤖','Još nema podataka','Dodaj nekoliko objava, pa generiši uvide');
+    return;
+  }
+
+  // Statistike po kategoriji
+  const byCat = groupBy(posts, 'category');
+  const catStats = Object.entries(byCat)
+    .map(([cat, ps]) => ({ cat, count: ps.length, avgEr: avgER(ps) }))
+    .sort((a,b) => b.avgEr - a.avgEr);
+  const topCat   = catStats[0];
+  const worstCat = catStats[catStats.length - 1];
+  const maxCatER = topCat?.avgEr || 1;
+
+  // Statistike po tipu
+  const byType = groupBy(posts, 'postType');
+  const typeStats = Object.entries(byType)
+    .map(([type, ps]) => ({ type, count: ps.length, avgEr: avgER(ps) }))
+    .sort((a,b) => b.avgEr - a.avgEr);
+  const topType = typeStats[0];
+
+  // Statistike po danu
+  const byDay = {};
+  posts.forEach(p => {
+    if (!p.date) return;
+    const day = DANI[new Date(p.date + 'T12:00:00').getDay()];
+    (byDay[day] = byDay[day] || []).push(p);
+  });
+  const dayStats = Object.entries(byDay)
+    .map(([day, ps]) => ({ day, count: ps.length, avgEr: avgER(ps) }))
+    .sort((a,b) => b.avgEr - a.avgEr);
+  const topDay = dayStats[0];
+
+  // Frekvencija objavljivanja
+  let freq = null;
+  const dates = posts.map(p => p.date ? new Date(p.date+'T12:00:00') : null).filter(Boolean).sort((a,b)=>a-b);
+  if (dates.length > 1) {
+    const spanDays = (dates[dates.length-1] - dates[0]) / 864e5;
+    freq = spanDays > 0 ? (posts.length / spanDays * 7).toFixed(1) : null;
+  }
+
+  // Poređenje platformi
+  const igP = posts.filter(p => p.platform === 'Instagram');
+  const liP = posts.filter(p => p.platform === 'LinkedIn');
+  const igER = avgER(igP).toFixed(2);
+  const liER = avgER(liP).toFixed(2);
+  const boljaPlat = Number(igER) >= Number(liER) ? 'Instagram' : 'LinkedIn';
+
+  // Neiskorišćeni formati
+  const SVI_TIPOVI = ['Karusel','Reel','Slika','Tekstualna objava','Video'];
+  const neiskorisceni = SVI_TIPOVI.filter(t => !byType[t]);
+
+  // Prosečna stopa čuvanja
+  const saPrihodom = posts.filter(p => n(p.reach) > 0);
+  const avgSaveRate = saPrihodom.length
+    ? (saPrihodom.reduce((s,p) => s + n(p.saves)/n(p.reach)*100, 0) / saPrihodom.length).toFixed(2)
+    : 0;
+
+  // Preporuke
+  const recs = [];
+  if (topCat)   recs.push(`Fokusiraj se na <strong>${CAT_SR[topCat.cat]||topCat.cat}</strong> — tvoja kategorija s najboljim performansama sa prosečnom SA od <strong>${topCat.avgEr.toFixed(2)}%</strong>.`);
+  if (topType)  recs.push(`Kreiraj više <strong>${topType.type}</strong> sadržaja — konstantno donosi najviše stope angažovanja.`);
+  if (topDay)   recs.push(`Prioritizuj objavljivanje <strong>${topDay.day}om</strong> — tvoja publika je najaktivnija taj dan (<strong>${topDay.avgEr.toFixed(2)}%</strong> pros. SA).`);
+  if (worstCat && worstCat.cat !== topCat?.cat) recs.push(`Preispitaj pristup za kategoriju <strong>${CAT_SR[worstCat.cat]||worstCat.cat}</strong> — isprobaj novi hook, ugao ili format da poboljšaš SA od <strong>${worstCat.avgEr.toFixed(2)}%</strong>.`);
+  if (neiskorisceni.length) recs.push(`Još nisi testirao/la <strong>${neiskorisceni.join(', ')}</strong>. Novi formati otkrivaju različita ponašanja publike.`);
+  if (freq && Number(freq) < 3) recs.push(`Objavljuješ ~<strong>${freq}×/nedeljno</strong>. Ciljaj na 4–5× — to može značajno ubrzati algoritmički doseg.`);
+  recs.push(`Tvoja prosečna stopa čuvanja je <strong>${avgSaveRate}%</strong>. Čuvanja su evergreen signal. Fokusiraj se na edukativne objave koje ljudi dodaju u omiljene.`);
+  recs.push(`Analiziraj top 3 opisa. Identifikuj strukturu hooka i ponovi je — doslednost se multiplicira na društvenim mrežama.`);
+  recs.push(`Testiraj isti sadržaj na obe platforme da vidiš gde tvoja publika bolje reaguje.`);
+
+  el.innerHTML = `<div class="ins-grid">
+
+    <!-- Najbolja kategorija -->
+    <div class="ins-card">
+      <div class="ins-head">
+        <div class="ins-ico" style="background:rgba(124,58,237,.15)">🏆</div>
+        <div class="ins-title">Najbolja kategorija sadržaja</div>
+      </div>
+      <div class="ins-body">
+        Tvoja kategorija s najboljim performansama je <strong>${CAT_SR[topCat?.cat]||topCat?.cat||'—'}</strong>
+        sa prosečnom stopom angažovanja od <strong>${topCat?.avgEr.toFixed(2)||0}%</strong>
+        u <strong>${brObjava(topCat?.count||0)}</strong>.
+        <div style="margin-top:1rem;display:flex;flex-direction:column;gap:.55rem">
+          ${catStats.map(c => `
+            <div>
+              <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:3px">
+                <span style="color:var(--subtle)">${CAT_SR[c.cat]||c.cat}</span>
+                <span><strong style="color:var(--text)">${c.avgEr.toFixed(2)}%</strong>
+                <span style="color:var(--muted);font-size:.7rem"> · ${brObjava(c.count)}</span></span>
+              </div>
+              <div class="prog"><div class="prog-fill" style="width:${maxCatER?c.avgEr/maxCatER*100:0}%"></div></div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Najbolji tip objave -->
+    <div class="ins-card" style="border-left-color:var(--accent)">
+      <div class="ins-head">
+        <div class="ins-ico" style="background:rgba(6,182,212,.15)">📱</div>
+        <div class="ins-title">Najbolji format objave</div>
+      </div>
+      <div class="ins-body">
+        <strong>${topType?.type||'—'}</strong> je tvoj najuspešniji format sa
+        <strong>${topType?.avgEr.toFixed(2)||0}%</strong> pros. SA.
+        <div style="margin-top:.85rem;display:flex;flex-wrap:wrap;gap:.6rem">
+          ${typeStats.map(t => `
+            <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:.6rem .9rem;text-align:center;min-width:90px">
+              <div style="font-weight:800;color:var(--text);font-size:.85rem">${t.type}</div>
+              <div style="color:var(--accent);font-weight:700;font-size:1rem;margin:.15rem 0">${t.avgEr.toFixed(2)}%</div>
+              <div style="color:var(--muted);font-size:.7rem">${brObjava(t.count)}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Najbolji dan -->
+    <div class="ins-card" style="border-left-color:var(--green)">
+      <div class="ins-head">
+        <div class="ins-ico" style="background:rgba(16,185,129,.15)">📅</div>
+        <div class="ins-title">Najbolji dan za objavu</div>
+      </div>
+      <div class="ins-body">
+        ${dayStats.length
+          ? `Tvoj sadržaj postiže najbolje rezultate <strong>${topDay.day}om</strong>
+             (pros. SA: <strong>${topDay.avgEr.toFixed(2)}%</strong>).
+             <div style="margin-top:.85rem;display:flex;flex-wrap:wrap;gap:.5rem">
+               ${dayStats.map(d => `
+                 <span style="background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:.32rem .65rem;font-size:.78rem">
+                   ${d.day}: <strong style="color:var(--green)">${d.avgEr.toFixed(2)}%</strong>
+                 </span>`).join('')}
+             </div>`
+          : 'Nema dovoljno podataka o datumu — popuni datum za svaku objavu.'}
+        ${freq ? `<div style="margin-top:.75rem;color:var(--subtle)">Trenutna frekvencija: <strong style="color:var(--text)">${freq}×/nedeljno</strong></div>` : ''}
+      </div>
+    </div>
+
+    <!-- Performanse platformi -->
+    <div class="ins-card" style="border-left-color:var(--amber)">
+      <div class="ins-head">
+        <div class="ins-ico" style="background:rgba(245,158,11,.15)">⚡</div>
+        <div class="ins-title">Performanse platformi</div>
+      </div>
+      <div class="ins-body">
+        <strong>${boljaPlat}</strong> je trenutno tvoja jača platforma.
+        <div style="display:flex;gap:.75rem;margin-top:.85rem;flex-wrap:wrap">
+          ${igP.length ? `<div class="mini-platform">
+            <div style="color:#e1306c;font-weight:800;font-size:.8rem;margin-bottom:.3rem">Instagram</div>
+            <div style="font-size:1.5rem;font-weight:800">${igER}%</div>
+            <div style="color:var(--muted);font-size:.75rem">${brObjava(igP.length)}</div>
+          </div>` : ''}
+          ${liP.length ? `<div class="mini-platform">
+            <div style="color:#0077b5;font-weight:800;font-size:.8rem;margin-bottom:.3rem">LinkedIn</div>
+            <div style="font-size:1.5rem;font-weight:800">${liER}%</div>
+            <div style="color:var(--muted);font-size:.75rem">${brObjava(liP.length)}</div>
+          </div>` : ''}
+        </div>
+      </div>
+    </div>
+
+    <!-- Preporuke -->
+    <div class="ins-card" style="border-left-color:var(--pink)">
+      <div class="ins-head">
+        <div class="ins-ico" style="background:rgba(236,72,153,.15)">🚀</div>
+        <div class="ins-title">Preporuke za naredne objave</div>
+      </div>
+      <div class="ins-body">
+        Na osnovu <strong>${brObjava(posts.length)}</strong> praćenih do sada:
+        <ul class="rec-list">
+          ${recs.map(r => `<li>${r}</li>`).join('')}
+        </ul>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// EMPTY STATE
+// ═══════════════════════════════════════════════
+function empty(ico, title, sub) {
+  return `<div class="empty"><div class="empty-ico">${ico}</div><div class="empty-title">${title}</div><p>${sub}</p></div>`;
+}
+
+// ═══════════════════════════════════════════════
+// CLAUDE AI INTEGRACIJA
+// ═══════════════════════════════════════════════
+
+function mdToHtml(md) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const lines = esc(md).split('\n');
+  return lines.map(line => {
+    if (/^#{1,3} /.test(line)) {
+      const txt = line.replace(/^#{1,3} /, '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      return `<span class="claude-sec-head">${txt}</span>`;
+    }
+    if (/^\d+\. /.test(line)) {
+      const txt = line.replace(/^\d+\. /, '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      return `<div class="claude-li"><span class="claude-li-arrow">→</span><span>${txt}</span></div>`;
+    }
+    if (/^[-*] /.test(line)) {
+      const txt = line.replace(/^[-*] /, '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      return `<div class="claude-li"><span class="claude-li-dot">•</span><span>${txt}</span></div>`;
+    }
+    if (line.trim() === '') return '<br>';
+    const txt = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    return txt + '<br>';
+  }).join('');
+}
+
+const AK = 'cpt_ak';
+
+(function () {
+  const k = localStorage.getItem(AK);
+  if (k) { const el = document.getElementById('api-key-inp'); if (el) el.value = k; }
+})();
+
+function saveApiKey(v) {
+  v.trim() ? localStorage.setItem(AK, v.trim()) : localStorage.removeItem(AK);
+}
+
+function toggleApiKey() {
+  const inp = document.getElementById('api-key-inp');
+  const btn = document.getElementById('api-key-toggle');
+  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = 'Sakrij'; }
+  else                         { inp.type = 'password'; btn.textContent = 'Prikaži'; }
+}
+
+async function testApiKey() {
+  const apiKey = (document.getElementById('api-key-inp').value || '').trim();
+  if (!apiKey) { alert('Unesi API ključ pre testiranja.'); return; }
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 50,
+        messages: [{ role: 'user', content: 'Hello' }]
+      })
+    });
+    const data = await res.json();
+    alert(JSON.stringify(data, null, 2));
+  } catch (err) {
+    alert('Greška: ' + err.message);
+  }
+}
+
+async function askClaude() {
+  const apiKey = (document.getElementById('api-key-inp').value || '').trim();
+  if (!apiKey) {
+    toast('Unesi Anthropic API ključ pre analize!', '#ef4444');
+    document.getElementById('api-key-inp').focus();
+    return;
+  }
+  const posts = load();
+  if (!posts.length) { toast('Nema objava za analizu!', '#ef4444'); return; }
+
+  document.getElementById('claude-loading').classList.add('show');
+  document.getElementById('claude-result').classList.remove('show');
+  document.getElementById('claude-result').innerHTML = '';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1800,
+        messages: [{ role: 'user', content: buildClaudePrompt(posts) }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `HTTP greška ${res.status}`);
+    }
+    const data = await res.json();
+    renderClaudeResult(data.content?.[0]?.text || '(prazan odgovor)', posts.length);
+  } catch (err) {
+    renderClaudeError(err.message);
+  } finally {
+    document.getElementById('claude-loading').classList.remove('show');
+  }
+}
+
+function buildClaudePrompt(posts) {
+  const rows = posts.map(p => ({
+    datum: p.date || 'nepoznato',
+    platforma: p.platform || 'nepoznato',
+    kategorija: p.category || 'nepoznato',
+    tip_objave: p.postType || 'nepoznato',
+    doseg: +p.reach || 0,
+    lajkovi: +p.likes || 0,
+    komentari: +p.comments || 0,
+    cuvanja: +p.saves || 0,
+    deljenja: +p.shares || 0,
+    klikovi_na_link: +p.linkClicks || 0,
+    dm_poruke: +p.dms || 0,
+    stopa_angazovanja_proc: +er(p).toFixed(2)
+  }));
+
+  return `Ti si ekspert za analitiku i strategiju sadržaja na društvenim mrežama. Analiziraš podatke kreatorke personalnog brenda.
+
+PODACI — ${posts.length} objava:
+\`\`\`json
+${JSON.stringify(rows, null, 2)}
+\`\`\`
+
+Napravi detaljan izveštaj ISKLJUČIVO na srpskom jeziku sa ovim sekcijama:
+
+## Najuspešniji sadržaj
+Koji tip sadržaja i kategorija postiže najbolje rezultate? Navedi konkretne brojeve iz podataka.
+
+## Najbolji format objave
+Koji format (Karusel, Reel, Slika, Video, Tekstualna objava) donosi najveću stopu angažovanja? Navedi prosečne vrednosti.
+
+## Optimalno vreme za objavljivanje
+Na osnovu datuma objava, koji dani su se pokazali kao najuspešniji po angažovanju?
+
+## Poređenje platformi
+Kako se Instagram i LinkedIn porede po stopi angažovanja, dosegu i ukupnim rezultatima?
+
+## 5 konkretnih preporuka
+Daj tačno 5 specifičnih, akcionih preporuka za narednih 30 dana. Svaka treba biti direktna i zasnovana na podacima.
+
+Koristi isključivo brojeve iz datih podataka. Piši jasno i direktno.`;
+}
+
+function renderClaudeResult(text, count) {
+  const now = new Date().toLocaleDateString('sr-Latn-RS', { day: 'numeric', month: 'long', year: 'numeric' });
+  const el = document.getElementById('claude-result');
+  el.innerHTML = `
+    <div class="claude-card">
+      <div class="claude-card-head">
+        <div class="claude-ico">🤖</div>
+        <div>
+          <div class="claude-card-title">Claude AI analiza sadržaja</div>
+          <div class="claude-card-sub">Generisano ${now} · Analizirano ${brObjava(count)}</div>
+        </div>
+      </div>
+      <div class="claude-body">${mdToHtml(text)}</div>
+    </div>`;
+  el.classList.add('show');
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderClaudeError(msg) {
+  const el = document.getElementById('claude-result');
+  el.innerHTML = `
+    <div class="claude-err">
+      <strong>Greška pri komunikaciji sa Claude API</strong><br>
+      ${msg}<br>
+      <span style="opacity:.7;font-size:.82rem;display:block;margin-top:.4rem">Proveri da li je API ključ ispravan i pokušaj ponovo.</span>
+    </div>`;
+  el.classList.add('show');
+}
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+renderDash();
+</script>
+</body>
+</html>

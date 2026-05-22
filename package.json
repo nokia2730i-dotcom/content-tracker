@@ -1,0 +1,12 @@
+{
+  "name": "content-tracker",
+  "version": "1.0.0",
+  "description": "Praćenje performansi sadržaja na društvenim mrežama",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
