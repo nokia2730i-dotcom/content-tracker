@@ -1340,6 +1340,10 @@ function parseInstagramHTML(html) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
+  const rawText = doc.body?.innerText || doc.body?.textContent || '';
+  console.log('[IG Import] Prvih 500 karaktera parsiranog teksta:');
+  console.log(rawText.slice(0, 500));
+
   const LABELS = [
     'Време прављења',
     'Налози до којих сте допрли',
@@ -1419,6 +1423,9 @@ function parseInstagramHTML(html) {
     }
   }
 
+  console.log(`[IG Import] Sve pronađene labele (${pairs.length} ukupno):`);
+  pairs.forEach((p, i) => console.log(`  [${i}] field="${p.field}"  value="${p.value}"`));
+
   // Group into posts — 'createdTime' marks start of each post
   const posts = [];
   let current = null;
@@ -1431,6 +1438,9 @@ function parseInstagramHTML(html) {
     }
   }
   if (current) posts.push(current);
+
+  console.log(`[IG Import] Grupisano u ${posts.length} objava:`);
+  posts.forEach((p, i) => console.log(`  Post ${i + 1}:`, p));
 
   return posts;
 }
