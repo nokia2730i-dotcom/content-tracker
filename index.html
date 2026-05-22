@@ -346,6 +346,37 @@ th.s-active .sort-ico { opacity: 1; }
   border-radius: 12px; padding: 1.1rem 1.35rem;
   color: var(--red); font-size: .875rem; line-height: 1.7;
 }
+
+.b-neu { background: rgba(100,116,139,.14); color: #94a3b8; }
+
+/* ── Instagram uvoz ─────────────────────────────────────────── */
+.ig-overlay {
+  position: fixed; inset: 0; z-index: 8000;
+  background: rgba(3,3,10,.92);
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+.ig-overlay.hidden { display: none; }
+.ig-modal {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 18px; padding: 2rem 2rem 1.5rem;
+  width: 100%; max-width: 880px; max-height: 88vh;
+  display: flex; flex-direction: column; gap: 1.1rem;
+  box-shadow: 0 25px 60px rgba(0,0,0,.7);
+}
+.ig-modal-title {
+  font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em;
+  background: linear-gradient(135deg, #e1306c, #fcb045);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.ig-modal-sub { color: var(--muted); font-size: .875rem; margin-top: .2rem; }
+.ig-scroll { overflow-y: auto; flex: 1; max-height: 52vh; }
+.ig-actions { display: flex; gap: .75rem; flex-wrap: wrap; padding-top: .85rem; border-top: 1px solid var(--border); }
+.ig-import-btn {
+  background: linear-gradient(135deg, rgba(225,48,108,.15), rgba(252,176,69,.08));
+  border: 1px solid rgba(225,48,108,.3); color: #fd6e9a;
+}
+.ig-import-btn:hover { background: linear-gradient(135deg, #e1306c, #fcb045); color: #fff; border-color: transparent; }
 </style>
 </head>
 <body>
@@ -427,6 +458,7 @@ th.s-active .sort-ico { opacity: 1; }
               <option value="Personal Story">Lična priča / Storytelling</option>
               <option value="Social Proof">Socijalni dokaz</option>
               <option value="Engagement Post">Angažovana objava</option>
+              <option value="Neraspoređeno">Neraspoređeno</option>
             </select>
           </div>
 
@@ -468,9 +500,12 @@ th.s-active .sort-ico { opacity: 1; }
           </div>
 
         </div>
-        <div style="margin-top:1.5rem; display:flex; gap:.75rem; flex-wrap:wrap;">
+        <div style="margin-top:1.5rem; display:flex; gap:.75rem; flex-wrap:wrap; align-items:center;">
           <button type="submit" class="btn btn-primary">Sačuvaj objavu</button>
           <button type="reset"  class="btn btn-ghost">Obriši unos</button>
+          <div style="height:1.5rem;width:1px;background:var(--border);flex-shrink:0"></div>
+          <button type="button" class="btn ig-import-btn" onclick="openInstagramImport()">📥 Uvezi Instagram podatke</button>
+          <input type="file" id="ig-file-input" accept=".html,.htm" style="display:none" onchange="handleInstagramFile(this)">
         </div>
       </form>
     </div>
@@ -496,6 +531,7 @@ th.s-active .sort-ico { opacity: 1; }
           <option value="Personal Story">Lična priča</option>
           <option value="Social Proof">Socijalni dokaz</option>
           <option value="Engagement Post">Angažovana objava</option>
+          <option value="Neraspoređeno">Neraspoređeno</option>
         </select>
         <select id="ft" onchange="renderTable()">
           <option value="">Svi tipovi</option>
@@ -547,6 +583,23 @@ th.s-active .sort-ico { opacity: 1; }
   </div>
 
 </div><!-- /main -->
+
+<!-- ════════════════════ INSTAGRAM IMPORT MODAL ════════════════════ -->
+<div id="ig-import-overlay" class="ig-overlay hidden">
+  <div class="ig-modal">
+    <div>
+      <div class="ig-modal-title">📥 Uvoz Instagram podataka</div>
+      <div class="ig-modal-sub" id="ig-import-sub">Analizira se fajl…</div>
+    </div>
+    <div class="ig-scroll tbl-scroll">
+      <div id="ig-import-preview"></div>
+    </div>
+    <div class="ig-actions">
+      <button class="btn btn-primary" id="ig-confirm-btn" onclick="confirmInstagramImport()">Potvrdi uvoz</button>
+      <button class="btn btn-ghost" onclick="cancelInstagramImport()">Otkaži</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -681,14 +734,16 @@ const CAT_CLS = {
   'Product Promotion': 'b-pro',
   'Personal Story':    'b-sto',
   'Social Proof':      'b-soc',
-  'Engagement Post':   'b-eng'
+  'Engagement Post':   'b-eng',
+  'Neraspoređeno':     'b-neu'
 };
 const CAT_SR = {
   'Education':         'Edukacija',
   'Product Promotion': 'Promocija',
   'Personal Story':    'Lična priča',
   'Social Proof':      'Soc. dokaz',
-  'Engagement Post':   'Angažovanje'
+  'Engagement Post':   'Angažovanje',
+  'Neraspoređeno':     'Neraspoređeno'
 };
 
 function catBadge(v) {
@@ -1248,6 +1303,227 @@ function renderClaudeError(msg) {
       <span style="opacity:.7;font-size:.82rem;display:block;margin-top:.4rem">Proveri da li je API ključ ispravan i pokušaj ponovo.</span>
     </div>`;
   el.classList.add('show');
+}
+
+// ═══════════════════════════════════════════════
+// INSTAGRAM UVOZ
+// ═══════════════════════════════════════════════
+let igPendingPosts = [];
+
+function openInstagramImport() {
+  const inp = document.getElementById('ig-file-input');
+  inp.value = '';
+  inp.click();
+}
+
+function handleInstagramFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const raw = parseInstagramHTML(e.target.result);
+      if (!raw.length) {
+        toast('Nisu pronađene objave u HTML fajlu. Provjeri format fajla.', '#ef4444');
+        return;
+      }
+      igPendingPosts = raw.map(igToTrackerPost);
+      showIgPreview(igPendingPosts);
+    } catch (err) {
+      toast('Greška pri čitanju fajla: ' + err.message, '#ef4444');
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function parseInstagramHTML(html) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  const LABEL_MAP = {
+    'Време прављења':              'createdTime',
+    'Налози до којих сте допрли':  'reach',
+    'Прикази':                     'impressions',
+    'Свиђања':                     'likes',
+    'Коментари':                   'comments',
+    'Чувања':                      'saves',
+    'Дељења':                      'shares',
+    'Посете профилу':              'profileVisits'
+  };
+
+  const pairs = [];
+
+  // Strategy 1: leaf element → next sibling value
+  const all = Array.from(doc.querySelectorAll('*'));
+  for (const el of all) {
+    if (el.children.length > 0) continue;
+    const txt = el.textContent.trim();
+    if (!LABEL_MAP[txt]) continue;
+    let val = '';
+    const nextSib = el.nextElementSibling;
+    if (nextSib) {
+      val = nextSib.textContent.trim();
+    } else {
+      const parentNext = el.parentElement?.nextElementSibling;
+      if (parentNext) val = parentNext.textContent.trim();
+    }
+    pairs.push({ field: LABEL_MAP[txt], value: val });
+  }
+
+  // Strategy 2: table rows <td>label</td><td>value</td>
+  for (const row of doc.querySelectorAll('tr')) {
+    const cells = row.querySelectorAll('td, th');
+    if (cells.length >= 2) {
+      const lbl = cells[0].textContent.trim();
+      if (LABEL_MAP[lbl]) pairs.push({ field: LABEL_MAP[lbl], value: cells[1].textContent.trim() });
+    }
+  }
+
+  // Strategy 3: <dt>/<dd> pairs
+  for (const dt of doc.querySelectorAll('dt')) {
+    const lbl = dt.textContent.trim();
+    if (LABEL_MAP[lbl]) {
+      const dd = dt.nextElementSibling;
+      if (dd && dd.tagName === 'DD') pairs.push({ field: LABEL_MAP[lbl], value: dd.textContent.trim() });
+    }
+  }
+
+  // Group by post: new post starts at each 'createdTime'
+  const posts = [];
+  let current = null;
+  for (const pair of pairs) {
+    if (pair.field === 'createdTime') {
+      if (current) posts.push(current);
+      current = { createdTime: pair.value };
+    } else if (current) {
+      if (!current[pair.field]) current[pair.field] = pair.value; // first occurrence wins
+    }
+  }
+  if (current) posts.push(current);
+
+  return posts;
+}
+
+function parseIgDate(str) {
+  if (!str) return '';
+  // ISO format: 2024-01-15T14:30:00+00:00
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+
+  // YYYY-MM-DD anywhere in string
+  const isoMatch = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  // Serbian Cyrillic / Latin month names
+  const MONTHS = {
+    'јануар':1,'јануара':1,'january':1,'jan':1,
+    'фебруар':2,'фебруара':2,'february':2,'feb':2,
+    'март':3,'марта':3,'march':3,'mar':3,
+    'април':4,'априла':4,'april':4,'apr':4,
+    'мај':5,'маја':5,'may':5,
+    'јун':6,'јуна':6,'june':6,'jun':6,
+    'јул':7,'јула':7,'july':7,'jul':7,
+    'август':8,'августа':8,'august':8,'aug':8,
+    'септембар':9,'септембра':9,'september':9,'sep':9,
+    'октобар':10,'октобра':10,'october':10,'oct':10,
+    'новембар':11,'новембра':11,'november':11,'nov':11,
+    'децембар':12,'децембра':12,'december':12,'dec':12,
+    'januar':1,'januara':1,'februar':2,'februara':2,
+    'mart':3,'marta':3,'april':4,'aprila':4,'maj':5,'maja':5,
+    'jun':6,'juna':6,'jul':7,'jula':7,'avgust':8,'avgusta':8,
+    'septembar':9,'septembra':9,'oktobar':10,'oktobra':10,
+    'novembar':11,'novembra':11,'decembar':12,'decembra':12
+  };
+  const lower = str.toLowerCase();
+  for (const [name, num] of Object.entries(MONTHS)) {
+    if (lower.includes(name)) {
+      const yearM = str.match(/\d{4}/);
+      const dayM  = str.match(/\b(\d{1,2})\b/);
+      if (yearM && dayM) {
+        return `${yearM[0]}-${String(num).padStart(2,'0')}-${dayM[1].padStart(2,'0')}`;
+      }
+    }
+  }
+  return '';
+}
+
+function parseIgNum(str) {
+  if (!str) return '0';
+  const clean = str.replace(/[^\d]/g, '');
+  return clean ? String(parseInt(clean, 10)) : '0';
+}
+
+function igToTrackerPost(ig) {
+  const notes = [];
+  if (ig.impressions) notes.push(`Prикази: ${ig.impressions}`);
+  if (ig.profileVisits) notes.push(`Posete profilu: ${ig.profileVisits}`);
+  return {
+    platform:   'Instagram',
+    date:       parseIgDate(ig.createdTime),
+    category:   'Neraspoređeno',
+    postType:   'Slika',
+    caption:    '',
+    reach:      parseIgNum(ig.reach),
+    likes:      parseIgNum(ig.likes),
+    comments:   parseIgNum(ig.comments),
+    saves:      parseIgNum(ig.saves),
+    shares:     parseIgNum(ig.shares),
+    linkClicks: '0',
+    dms:        '0',
+    notes:      notes.join(' · ')
+  };
+}
+
+function showIgPreview(posts) {
+  const sub = document.getElementById('ig-import-sub');
+  sub.textContent = `Pronađeno ${brObjava(posts.length)} za uvoz`;
+
+  const hasData = posts.some(p => p.date || +p.reach || +p.likes);
+  if (!hasData) {
+    document.getElementById('ig-import-preview').innerHTML =
+      `<div style="color:var(--amber);font-size:.875rem;padding:.75rem 0">
+        ⚠ Podaci su pronađeni ali vrednosti izgledaju prazne. Uvoz će svejedno biti moguć — proveri format fajla.
+      </div>`;
+  } else {
+    document.getElementById('ig-import-preview').innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Datum</th><th>Doseg</th><th>Lajkovi</th><th>Kom.</th><th>Čuvanja</th><th>Deljenja</th>
+        </tr></thead>
+        <tbody>
+          ${posts.map(p => `<tr>
+            <td style="white-space:nowrap">${p.date || '<span style="color:var(--muted)">—</span>'}</td>
+            <td>${n(p.reach).toLocaleString()}</td>
+            <td>${n(p.likes).toLocaleString()}</td>
+            <td>${n(p.comments).toLocaleString()}</td>
+            <td>${n(p.saves).toLocaleString()}</td>
+            <td>${n(p.shares).toLocaleString()}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  document.getElementById('ig-import-overlay').classList.remove('hidden');
+}
+
+function confirmInstagramImport() {
+  if (!igPendingPosts.length) return;
+  const count = igPendingPosts.length;
+  const data = load();
+  igPendingPosts.forEach((p, i) => {
+    p.id = (Date.now() + i) + '';
+    data.push(p);
+  });
+  store(data);
+  igPendingPosts = [];
+  cancelInstagramImport();
+  toast(`Uvezeno ${brObjava(count)}!`);
+  nav('posts');
+}
+
+function cancelInstagramImport() {
+  document.getElementById('ig-import-overlay').classList.add('hidden');
+  igPendingPosts = [];
 }
 
 // ═══════════════════════════════════════════════
