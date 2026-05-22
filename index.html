@@ -217,6 +217,39 @@ th.s-active .sort-ico { opacity: 1; }
   padding: .75rem 1rem; flex: 1;
 }
 
+/* ── PIN Overlay ────────────────────────────────────────────── */
+#pin-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(3,3,10,.97);
+  display: flex; align-items: center; justify-content: center;
+}
+#pin-overlay.hidden { display: none; }
+.pin-box {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 18px; padding: 2.5rem 2rem;
+  display: flex; flex-direction: column; align-items: center; gap: 1.25rem;
+  width: 100%; max-width: 340px;
+  box-shadow: 0 25px 60px rgba(0,0,0,.7);
+}
+.pin-title {
+  font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em;
+  background: linear-gradient(135deg, var(--pri-light), var(--accent));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.pin-sub { color: var(--muted); font-size: .875rem; text-align: center; }
+#pin-input {
+  text-align: center; letter-spacing: .4em; font-size: 1.6rem;
+  font-weight: 800; max-width: 180px; padding: .7rem 1rem;
+}
+.pin-err { color: var(--red); font-size: .82rem; min-height: 1.2em; }
+.btn-logout {
+  padding: .42rem .85rem; border-radius: 7px; border: 1px solid rgba(239,68,68,.25);
+  background: rgba(239,68,68,.08); color: var(--red); cursor: pointer;
+  font-size: .78rem; font-weight: 700; transition: all .18s; white-space: nowrap;
+  font-family: inherit;
+}
+.btn-logout:hover { background: var(--red); color: #fff; }
+
 /* ── Toast ──────────────────────────────────────────────────── */
 .toast {
   position: fixed; bottom: 2rem; right: 2rem; z-index: 999;
@@ -317,6 +350,17 @@ th.s-active .sort-ico { opacity: 1; }
 </head>
 <body>
 
+<!-- ════════════════════ PIN OVERLAY ════════════════════ -->
+<div id="pin-overlay">
+  <div class="pin-box">
+    <div class="pin-title">⚡ ContentTracker</div>
+    <div class="pin-sub">Unesi PIN da nastaviš</div>
+    <input id="pin-input" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" onkeydown="if(event.key==='Enter')pinSubmit()">
+    <button class="btn btn-primary" onclick="pinSubmit()" style="width:100%;justify-content:center;padding:.7rem">Potvrdi</button>
+    <div class="pin-err" id="pin-err"></div>
+  </div>
+</div>
+
 <!-- ════════════════════ HEADER ════════════════════ -->
 <header class="header">
   <div class="logo">⚡ ContentTracker</div>
@@ -325,6 +369,7 @@ th.s-active .sort-ico { opacity: 1; }
     <button class="nav-btn" onclick="nav('add')">+ Dodaj objavu</button>
     <button class="nav-btn" onclick="nav('posts')">Sve objave</button>
     <button class="nav-btn" onclick="nav('insights')">AI Uvidi</button>
+    <button class="btn-logout" onclick="pinLogout()">Odjavi se</button>
   </nav>
 </header>
 
@@ -506,6 +551,30 @@ th.s-active .sort-ico { opacity: 1; }
 <div class="toast" id="toast"></div>
 
 <script>
+// ═══════════════════════════════════════════════
+// PIN ZAŠTITA
+// ═══════════════════════════════════════════════
+if (localStorage.getItem('pin_authenticated') === 'true') {
+  document.getElementById('pin-overlay').classList.add('hidden');
+}
+
+function pinSubmit() {
+  const val = document.getElementById('pin-input').value;
+  if (val === '1234') {
+    localStorage.setItem('pin_authenticated', 'true');
+    document.getElementById('pin-overlay').classList.add('hidden');
+  } else {
+    document.getElementById('pin-err').textContent = 'Pogrešan PIN. Pokušaj ponovo.';
+    document.getElementById('pin-input').value = '';
+    document.getElementById('pin-input').focus();
+  }
+}
+
+function pinLogout() {
+  localStorage.removeItem('pin_authenticated');
+  location.reload();
+}
+
 // ═══════════════════════════════════════════════
 // DATA
 // ═══════════════════════════════════════════════
