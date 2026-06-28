@@ -1,6 +1,3 @@
-Evo kompletnog `index.html` (sa cloud sinhronizacijom). Nalepi ga ceo u GitHub umesto postojećeg:
-
-```html
 <!DOCTYPE html>
 <html lang="sr-Latn">
 <head>
@@ -1826,20 +1823,3 @@ function cancelInstagramImport() {
 </script>
 </body>
 </html>
-```
-
-To je ceo fajl. A evo i **SQL koda** za Supabase (Korak 1, nalepi ga u SQL Editor i klikni Run):
-
-```sql
-create table app_state (
-  id text primary key,
-  data jsonb
-);
-
-alter table app_state enable row level security;
-
-create policy "public access" on app_state
-  for all using (true) with check (true);
-```
-
-Kad postaviš fajl i podesiš Supabase, otvori tab **☁ Sinhronizacija**, unesi URL + ključ i klikni „Poveži i sinhronizuj". Javi ako negde zapne.
