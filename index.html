@@ -1,3 +1,6 @@
+Evo kompletnog `index.html` (sa cloud sinhronizacijom). Nalepi ga ceo u GitHub umesto postojećeg:
+
+```html
 <!DOCTYPE html>
 <html lang="sr-Latn">
 <head>
@@ -446,6 +449,7 @@ th.s-active .sort-ico { opacity: 1; }
     <button class="nav-btn" onclick="nav('add')">+ Dodaj objavu</button>
     <button class="nav-btn" onclick="nav('posts')">Sve objave</button>
     <button class="nav-btn" onclick="nav('insights')">AI Uvidi</button>
+    <button class="nav-btn" onclick="nav('sync')">☁ Sinhronizacija</button>
     <button class="btn-logout" onclick="pinLogout()">Odjavi se</button>
   </nav>
 </header>
@@ -633,6 +637,36 @@ th.s-active .sort-ico { opacity: 1; }
     <div id="ins-wrap"></div>
   </div>
 
+  <!-- ════════════════ SINHRONIZACIJA ════════════════ -->
+  <div id="pg-sync" class="page">
+    <div class="page-head">
+      <div class="page-title">☁ Sinhronizacija</div>
+      <div class="page-sub">Poveži cloud bazu (Supabase) da vidiš iste podatke na svim uređajima</div>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:1rem;max-width:640px">
+      <div class="f-group">
+        <label>Supabase Project URL</label>
+        <input id="supa-url" type="text" placeholder="https://xxxx.supabase.co">
+      </div>
+      <div class="f-group">
+        <label>Supabase anon ključ</label>
+        <input id="supa-key" type="password" placeholder="eyJhbGciOi…">
+      </div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="connectCloud()">Poveži i sinhronizuj</button>
+        <button class="btn btn-ghost" onclick="manualSync()">↻ Sinhronizuj sada</button>
+      </div>
+      <div id="sync-status" style="font-size:.85rem;font-weight:700;color:var(--muted)">○ Cloud nije povezan</div>
+      <div style="color:var(--muted);font-size:.8rem;line-height:1.7;border-top:1px solid var(--border);padding-top:1rem">
+        <strong style="color:var(--subtle)">Kako da podesiš (jednom):</strong><br>
+        1. Napravi besplatan nalog na <strong>supabase.com</strong> i novi projekat.<br>
+        2. U <strong>SQL Editor</strong> nalepi i pokreni kod koji ti je Claude dao (pravi tabelu za podatke).<br>
+        3. Idi na <strong>Settings → API</strong>, kopiraj <strong>Project URL</strong> i <strong>anon public</strong> ključ ovde gore i klikni „Poveži i sinhronizuj“.<br>
+        4. Na telefonu unesi <strong>isti</strong> URL i ključ — podaci će se automatski pojaviti.
+      </div>
+    </div>
+  </div>
+
 </div><!-- /main -->
 
 <!-- ════════════════════ INSTAGRAM IMPORT MODAL ════════════════════ -->
@@ -684,7 +718,7 @@ function pinLogout() {
 // ═══════════════════════════════════════════════
 const KEY = 'cpt_v1';
 const load  = ()  => JSON.parse(localStorage.getItem(KEY) || '[]');
-const store = (d) => localStorage.setItem(KEY, JSON.stringify(d));
+const store = (d) => { localStorage.setItem(KEY, JSON.stringify(d)); pushState(); };
 
 function addPost(p)  { const d = load(); p.id = Date.now()+''; d.push(p); store(d); }
 function delPost(id) { store(load().filter(p => p.id !== id)); }
@@ -692,7 +726,122 @@ function delPost(id) { store(load().filter(p => p.id !== id)); }
 // ── Praćenje već analiziranih objava (za Claude AI) ──────────
 const ANALYZED_KEY = 'cpt_analyzed_v1';
 const loadAnalyzed  = ()    => JSON.parse(localStorage.getItem(ANALYZED_KEY) || '[]');
-const storeAnalyzed = (ids) => localStorage.setItem(ANALYZED_KEY, JSON.stringify(ids));
+const storeAnalyzed = (ids) => { localStorage.setItem(ANALYZED_KEY, JSON.stringify(ids)); pushState(); };
+
+// ═══════════════════════════════════════════════
+// CLOUD SINHRONIZACIJA (Supabase)
+// ═══════════════════════════════════════════════
+const CLOUD = { url: 'cpt_supa_url', key: 'cpt_supa_key' };
+const getCloud = () => ({
+  url: (localStorage.getItem(CLOUD.url) || '').replace(/\/+$/, ''),
+  key: localStorage.getItem(CLOUD.key) || ''
+});
+const cloudOn = () => { const c = getCloud(); return !!(c.url && c.key); };
+
+function cloudHeaders(extra) {
+  const c = getCloud();
+  return Object.assign({ apikey: c.key, Authorization: 'Bearer ' + c.key }, extra || {});
+}
+
+// Otpremanje celog stanja (objave + analizirane) u cloud — debounce da se spoje brzi pozivi
+let pushTimer = null;
+function pushState() {
+  if (!cloudOn()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => {
+    pushNow().then(() => setSyncStatus('ok')).catch(e => setSyncStatus('err', e.message));
+  }, 500);
+}
+
+async function pushNow() {
+  const c = getCloud();
+  const res = await fetch(`${c.url}/rest/v1/app_state?on_conflict=id`, {
+    method: 'POST',
+    headers: cloudHeaders({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }),
+    body: JSON.stringify([{ id: 'state', data: { posts: load(), analyzed: loadAnalyzed() } }])
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+}
+
+// Preuzimanje stanja iz cloud-a → u lokalno skladište (bez ponovnog push-a)
+async function pullState() {
+  const c = getCloud();
+  const res = await fetch(`${c.url}/rest/v1/app_state?id=eq.state&select=data`, { headers: cloudHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' — proveri URL/ključ i da li tabela postoji.');
+  const rows = await res.json();
+  if (rows.length && rows[0].data) {
+    const d = rows[0].data;
+    if (Array.isArray(d.posts))    localStorage.setItem(KEY, JSON.stringify(d.posts));
+    if (Array.isArray(d.analyzed)) localStorage.setItem(ANALYZED_KEY, JSON.stringify(d.analyzed));
+    return d.posts || [];
+  }
+  return null; // u cloud-u još nema reda 'state'
+}
+
+function setSyncStatus(state, msg) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  const map = {
+    off:  ['var(--muted)', '○ Cloud nije povezan'],
+    idle: ['var(--accent)', '● Cloud povezan'],
+    sync: ['var(--amber)', '↻ Sinhronizacija…'],
+    ok:   ['var(--green)', '✓ Sinhronizovano'],
+    err:  ['var(--red)',   '✕ Greška' + (msg ? ': ' + msg : '')]
+  };
+  const [color, text] = map[state] || map.off;
+  el.style.color = color;
+  el.textContent = text;
+}
+
+function initSyncPage() {
+  const c = getCloud();
+  const u = document.getElementById('supa-url'); if (u) u.value = c.url;
+  const k = document.getElementById('supa-key'); if (k) k.value = c.key;
+  setSyncStatus(cloudOn() ? 'idle' : 'off');
+}
+
+function saveCloud() {
+  const url = (document.getElementById('supa-url').value || '').trim().replace(/\/+$/, '');
+  const key = (document.getElementById('supa-key').value || '').trim();
+  url ? localStorage.setItem(CLOUD.url, url) : localStorage.removeItem(CLOUD.url);
+  key ? localStorage.setItem(CLOUD.key, key) : localStorage.removeItem(CLOUD.key);
+}
+
+// Prvo povezivanje: ako cloud ima podatke → preuzmi; ako je prazan → otpremi lokalne
+async function connectCloud() {
+  saveCloud();
+  if (!cloudOn()) { toast('Unesi Project URL i anon ključ.', '#ef4444'); return; }
+  setSyncStatus('sync');
+  try {
+    const cloudPosts = await pullState();
+    if (cloudPosts && cloudPosts.length) {
+      toast('Podaci preuzeti iz cloud-a!');
+    } else {
+      await pushNow();
+      toast('Lokalni podaci otpremljeni u cloud!');
+    }
+    setSyncStatus('ok');
+    renderDash();
+  } catch (e) {
+    setSyncStatus('err', e.message);
+    toast('Greška: ' + e.message, '#ef4444');
+  }
+}
+
+// Ručna sinhronizacija — povuci najnovije stanje iz cloud-a
+async function manualSync() {
+  if (!cloudOn()) { toast('Prvo poveži cloud (unesi URL i ključ).', '#ef4444'); return; }
+  setSyncStatus('sync');
+  try {
+    await pullState();
+    renderDash();
+    toast('Sinhronizovano!');
+    setSyncStatus('ok');
+  } catch (e) {
+    setSyncStatus('err', e.message);
+    toast('Greška: ' + e.message, '#ef4444');
+  }
+}
 
 function markAnalyzed(ids) {
   const set = new Set(loadAnalyzed());
@@ -751,7 +900,7 @@ function brObjava(num) {
 // ═══════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════
-const PAGES = ['dashboard','add','posts','insights'];
+const PAGES = ['dashboard','add','posts','insights','sync'];
 
 function nav(page) {
   PAGES.forEach((p, i) => {
@@ -761,6 +910,7 @@ function nav(page) {
   if (page === 'dashboard') renderDash();
   if (page === 'posts')     renderTable();
   if (page === 'insights') { updateNewCount(); if (load().length) buildInsights(); }
+  if (page === 'sync')     initSyncPage();
 }
 
 // ═══════════════════════════════════════════════
@@ -1667,7 +1817,29 @@ function cancelInstagramImport() {
 // ═══════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════
-renderDash();
+(async function initApp() {
+  if (cloudOn()) {
+    try { await pullState(); } catch (e) { console.warn('Cloud pull nije uspeo:', e.message); }
+  }
+  renderDash();
+})();
 </script>
 </body>
 </html>
+```
+
+To je ceo fajl. A evo i **SQL koda** za Supabase (Korak 1, nalepi ga u SQL Editor i klikni Run):
+
+```sql
+create table app_state (
+  id text primary key,
+  data jsonb
+);
+
+alter table app_state enable row level security;
+
+create policy "public access" on app_state
+  for all using (true) with check (true);
+```
+
+Kad postaviš fajl i podesiš Supabase, otvori tab **☁ Sinhronizacija**, unesi URL + ključ i klikni „Poveži i sinhronizuj". Javi ako negde zapne.
