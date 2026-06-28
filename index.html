@@ -267,12 +267,58 @@ th.s-active .sort-ico { opacity: 1; }
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 700px) {
   .main { padding: 1rem; }
-  .header { padding: .75rem 1rem; }
-  .nav-btn { padding: .4rem .55rem; font-size: .72rem; }
+
+  /* Header se prelama: logo gore, navigacija ispod (horizontalni scroll) */
+  .header { padding: .7rem 1rem; flex-wrap: wrap; gap: .55rem; }
   .logo { font-size: .95rem; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .charts-grid { grid-template-columns: 1fr; }
+  .nav {
+    width: 100%; gap: .3rem;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    padding-bottom: .15rem;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav { scrollbar-width: none; }
+  .nav-btn, .btn-logout { padding: .42rem .7rem; font-size: .74rem; flex-shrink: 0; }
+
+  .page-title { font-size: 1.3rem; }
+
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: .7rem; }
+  .stat { padding: 1rem; }
   .stat-val { font-size: 1.5rem; }
+  .charts-grid { grid-template-columns: 1fr; }
+
+  .card { padding: 1.1rem; }
+
+  /* Forma i metrike u jednu/dve kolone */
+  .form-grid { grid-template-columns: 1fr; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Dugmad za AI analizu pune širine */
+  .ins-btn-row { flex-direction: column; }
+  .ins-btn-row .btn { width: 100%; justify-content: center; }
+
+  /* API ključ red — vertikalno */
+  .api-key-row { flex-direction: column; align-items: stretch; }
+  .api-key-row input { width: 100%; min-width: 0; }
+  .api-key-row .btn { width: 100%; justify-content: center; }
+
+  /* Filteri popunjavaju širinu */
+  .filter-bar { gap: .45rem; }
+  .filter-bar select, .filter-bar input { flex: 1 1 45%; min-width: 0; }
+
+  /* Instagram modal i akcije */
+  .ig-modal { padding: 1.25rem; max-height: 92vh; }
+  .ig-actions .btn { flex: 1; justify-content: center; }
+
+  /* Toast preko cele širine */
+  .toast { left: 1rem; right: 1rem; bottom: 1rem; text-align: center; }
+}
+
+@media (max-width: 420px) {
+  .stats-grid { grid-template-columns: 1fr; }
+  .metrics-grid { grid-template-columns: 1fr; }
+  .stat-val { font-size: 1.7rem; }
+  .filter-bar select, .filter-bar input { flex: 1 1 100%; }
 }
 
 /* ── Claude AI integracija ───────────────────────────────────── */
@@ -565,10 +611,15 @@ th.s-active .sort-ico { opacity: 1; }
       <button class="btn btn-accent" onclick="buildInsights()" style="padding:.7rem 2rem;font-size:.95rem;">
         ✨ Lokalni uvidi
       </button>
-      <button class="btn btn-primary" onclick="askClaude()" style="padding:.7rem 2rem;font-size:.95rem;">
-        🤖 Claude AI analiza
+      <button class="btn btn-primary" onclick="askClaude('new')" style="padding:.7rem 2rem;font-size:.95rem;">
+        🤖 Analiziraj nove objave
+      </button>
+      <button class="btn btn-ghost" onclick="askClaude('all')" style="padding:.7rem 1.4rem;font-size:.95rem;">
+        Analiziraj sve ponovo
       </button>
     </div>
+
+    <div id="claude-new-count" style="text-align:center;color:var(--muted);font-size:.8rem;margin-bottom:1.5rem;"></div>
 
     <!-- Loading stanje -->
     <div class="claude-loading" id="claude-loading">
@@ -638,6 +689,23 @@ const store = (d) => localStorage.setItem(KEY, JSON.stringify(d));
 function addPost(p)  { const d = load(); p.id = Date.now()+''; d.push(p); store(d); }
 function delPost(id) { store(load().filter(p => p.id !== id)); }
 
+// ── Praćenje već analiziranih objava (za Claude AI) ──────────
+const ANALYZED_KEY = 'cpt_analyzed_v1';
+const loadAnalyzed  = ()    => JSON.parse(localStorage.getItem(ANALYZED_KEY) || '[]');
+const storeAnalyzed = (ids) => localStorage.setItem(ANALYZED_KEY, JSON.stringify(ids));
+
+function markAnalyzed(ids) {
+  const set = new Set(loadAnalyzed());
+  ids.forEach(id => set.add(id));
+  storeAnalyzed([...set]);
+}
+
+// Objave koje još nisu poslate Claude analizi
+function unanalyzedPosts() {
+  const done = new Set(loadAnalyzed());
+  return load().filter(p => !done.has(p.id));
+}
+
 // ═══════════════════════════════════════════════
 // MATHS
 // ═══════════════════════════════════════════════
@@ -692,7 +760,7 @@ function nav(page) {
   });
   if (page === 'dashboard') renderDash();
   if (page === 'posts')     renderTable();
-  if (page === 'insights' && load().length) buildInsights();
+  if (page === 'insights') { updateNewCount(); if (load().length) buildInsights(); }
 }
 
 // ═══════════════════════════════════════════════
@@ -1190,15 +1258,22 @@ async function testApiKey() {
   }
 }
 
-async function askClaude() {
+async function askClaude(mode = 'new') {
   const apiKey = (document.getElementById('api-key-inp').value || '').trim();
   if (!apiKey) {
     toast('Unesi Anthropic API ključ pre analize!', '#ef4444');
     document.getElementById('api-key-inp').focus();
     return;
   }
-  const posts = load();
-  if (!posts.length) { toast('Nema objava za analizu!', '#ef4444'); return; }
+  const all = load();
+  if (!all.length) { toast('Nema objava za analizu!', '#ef4444'); return; }
+
+  // 'new' = samo objave dodate od poslednje analize; 'all' = sve objave
+  const posts = mode === 'all' ? all : unanalyzedPosts();
+  if (!posts.length) {
+    toast('Nema novih objava od poslednje analize. Dodaj nove ili klikni "Analiziraj sve ponovo".', '#f59e0b');
+    return;
+  }
 
   document.getElementById('claude-loading').classList.add('show');
   document.getElementById('claude-result').classList.remove('show');
@@ -1216,7 +1291,7 @@ async function askClaude() {
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
         max_tokens: 1800,
-        messages: [{ role: 'user', content: buildClaudePrompt(posts) }]
+        messages: [{ role: 'user', content: buildClaudePrompt(posts, mode, all.length) }]
       })
     });
 
@@ -1225,7 +1300,10 @@ async function askClaude() {
       throw new Error(err?.error?.message || `HTTP greška ${res.status}`);
     }
     const data = await res.json();
-    renderClaudeResult(data.content?.[0]?.text || '(prazan odgovor)', posts.length);
+    renderClaudeResult(data.content?.[0]?.text || '(prazan odgovor)', posts.length, mode);
+    // Označi analizirane objave da se sledeći put obrađuju samo nove
+    markAnalyzed(posts.map(p => p.id));
+    updateNewCount();
   } catch (err) {
     renderClaudeError(err.message);
   } finally {
@@ -1233,7 +1311,19 @@ async function askClaude() {
   }
 }
 
-function buildClaudePrompt(posts) {
+// Prikaz broja novih (još neanaliziranih) objava na stranici AI Uvidi
+function updateNewCount() {
+  const el = document.getElementById('claude-new-count');
+  if (!el) return;
+  const total = load().length;
+  const nNew  = unanalyzedPosts().length;
+  if (!total) { el.textContent = ''; return; }
+  el.innerHTML = nNew
+    ? `📌 <strong style="color:var(--pri-light)">${brObjava(nNew)}</strong> za analizu od poslednje Claude analize.`
+    : `✓ Sve objave su već analizirane. Dodaj nove objave ili klikni „Analiziraj sve ponovo“.`;
+}
+
+function buildClaudePrompt(posts, mode = 'new', totalCount = posts.length) {
   const rows = posts.map(p => ({
     datum: p.date || 'nepoznato',
     platforma: p.platform || 'nepoznato',
@@ -1249,9 +1339,13 @@ function buildClaudePrompt(posts) {
     stopa_angazovanja_proc: +er(p).toFixed(2)
   }));
 
+  const scope = mode === 'all'
+    ? `PODACI — svih ${posts.length} objava:`
+    : `PODACI — ${posts.length} NOVIH objava dodatih od poslednje analize (od ukupno ${totalCount} u bazi). Analiziraj ISKLJUČIVO ove nove objave navedene ispod — NEMOJ uključivati ranije objave:`;
+
   return `Ti si ekspert za analitiku i strategiju sadržaja na društvenim mrežama. Analiziraš podatke kreatorke personalnog brenda.
 
-PODACI — ${posts.length} objava:
+${scope}
 \`\`\`json
 ${JSON.stringify(rows, null, 2)}
 \`\`\`
@@ -1276,8 +1370,9 @@ Daj tačno 5 specifičnih, akcionih preporuka za narednih 30 dana. Svaka treba b
 Koristi isključivo brojeve iz datih podataka. Piši jasno i direktno.`;
 }
 
-function renderClaudeResult(text, count) {
+function renderClaudeResult(text, count, mode = 'new') {
   const now = new Date().toLocaleDateString('sr-Latn-RS', { day: 'numeric', month: 'long', year: 'numeric' });
+  const opseg = mode === 'all' ? 'sve objave' : 'nove objave';
   const el = document.getElementById('claude-result');
   el.innerHTML = `
     <div class="claude-card">
@@ -1285,7 +1380,7 @@ function renderClaudeResult(text, count) {
         <div class="claude-ico">🤖</div>
         <div>
           <div class="claude-card-title">Claude AI analiza sadržaja</div>
-          <div class="claude-card-sub">Generisano ${now} · Analizirano ${brObjava(count)}</div>
+          <div class="claude-card-sub">Generisano ${now} · Analizirano ${brObjava(count)} (${opseg})</div>
         </div>
       </div>
       <div class="claude-body">${mdToHtml(text)}</div>
