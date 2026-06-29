@@ -475,8 +475,8 @@ th.s-active .sort-ico { opacity: 1; }
   <!-- ════════════════ ADD POST ════════════════ -->
   <div id="pg-add" class="page">
     <div class="page-head">
-      <div class="page-title">Dodaj novu objavu</div>
-      <div class="page-sub">Unesi novi sadržaj i njegove metrike</div>
+      <div class="page-title" id="add-title">Dodaj novu objavu</div>
+      <div class="page-sub" id="add-sub">Unesi novi sadržaj i njegove metrike</div>
     </div>
     <div class="card">
       <form id="post-form" autocomplete="off">
@@ -548,8 +548,9 @@ th.s-active .sort-ico { opacity: 1; }
 
         </div>
         <div style="margin-top:1.5rem; display:flex; gap:.75rem; flex-wrap:wrap; align-items:center;">
-          <button type="submit" class="btn btn-primary">Sačuvaj objavu</button>
+          <button type="submit" class="btn btn-primary" id="post-submit-btn">Sačuvaj objavu</button>
           <button type="reset"  class="btn btn-ghost">Obriši unos</button>
+          <button type="button" class="btn btn-ghost" id="edit-cancel-btn" style="display:none" onclick="cancelEdit()">Otkaži izmenu</button>
           <div style="height:1.5rem;width:1px;background:var(--border);flex-shrink:0"></div>
           <button type="button" class="btn ig-import-btn" onclick="openInstagramImport()">📥 Uvezi Instagram podatke</button>
           <input type="file" id="ig-file-input" accept=".html,.htm" style="display:none" onchange="handleInstagramFile(this)">
@@ -719,6 +720,13 @@ const store = (d) => { localStorage.setItem(KEY, JSON.stringify(d)); pushState()
 
 function addPost(p)  { const d = load(); p.id = Date.now()+''; d.push(p); store(d); }
 function delPost(id) { store(load().filter(p => p.id !== id)); }
+function updatePost(id, data) {
+  const d = load();
+  const i = d.findIndex(p => p.id === id);
+  if (i === -1) return;
+  d[i] = Object.assign({}, d[i], data, { id }); // zadrži originalni id
+  store(d);
+}
 
 // ── Praćenje već analiziranih objava (za Claude AI) ──────────
 const ANALYZED_KEY = 'cpt_analyzed_v1';
@@ -915,15 +923,65 @@ function nav(page) {
 // ═══════════════════════════════════════════════
 document.querySelector('input[name=date]').valueAsDate = new Date();
 
+// id objave koja se trenutno menja (null = dodavanje nove)
+let editingId = null;
+
 document.getElementById('post-form').addEventListener('submit', e => {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target));
-  addPost(data);
+  const wasEditing = editingId;
+  if (wasEditing) updatePost(wasEditing, data);
+  else            addPost(data);
   e.target.reset();
   document.querySelector('input[name=date]').valueAsDate = new Date();
-  toast('Objava uspešno sačuvana!');
-  nav('dashboard');
+  exitEditMode();
+  toast(wasEditing ? 'Izmene sačuvane!' : 'Objava uspešno sačuvana!');
+  nav(wasEditing ? 'posts' : 'dashboard');
 });
+
+// Učitaj postojeću objavu u formu radi izmene
+function editPost(id) {
+  const p = load().find(x => x.id === id);
+  if (!p) return;
+  editingId = id;
+  const f = document.getElementById('post-form');
+  f.platform.value   = p.platform   || '';
+  f.date.value       = p.date       || '';
+  f.category.value   = p.category   || '';
+  f.postType.value   = p.postType   || '';
+  f.caption.value    = p.caption    || '';
+  f.reach.value      = p.reach      ?? '';
+  f.likes.value      = p.likes      ?? '';
+  f.comments.value   = p.comments   ?? '';
+  f.saves.value      = p.saves      ?? '';
+  f.shares.value     = p.shares     ?? '';
+  f.linkClicks.value = p.linkClicks ?? '';
+  f.dms.value        = p.dms        ?? '';
+  f.notes.value      = p.notes      || '';
+  document.getElementById('add-title').textContent = 'Izmeni objavu';
+  document.getElementById('add-sub').textContent   = 'Ažuriraj podatke postojeće objave';
+  document.getElementById('post-submit-btn').textContent = 'Sačuvaj izmene';
+  document.getElementById('edit-cancel-btn').style.display = '';
+  nav('add');
+}
+
+// Vrati formu u režim dodavanja nove objave
+function exitEditMode() {
+  editingId = null;
+  document.getElementById('add-title').textContent = 'Dodaj novu objavu';
+  document.getElementById('add-sub').textContent   = 'Unesi novi sadržaj i njegove metrike';
+  document.getElementById('post-submit-btn').textContent = 'Sačuvaj objavu';
+  const c = document.getElementById('edit-cancel-btn');
+  if (c) c.style.display = 'none';
+}
+
+function cancelEdit() {
+  const f = document.getElementById('post-form');
+  f.reset();
+  document.querySelector('input[name=date]').valueAsDate = new Date();
+  exitEditMode();
+  nav('posts');
+}
 
 // ═══════════════════════════════════════════════
 // TOAST
@@ -1129,7 +1187,10 @@ function renderTable() {
         <td>${n(p.linkClicks).toLocaleString()}</td>
         <td>${n(p.dms).toLocaleString()}</td>
         <td><span class="${erClass(er(p))}">${er(p).toFixed(2)}%</span></td>
-        <td><button class="btn btn-danger" onclick="doDelete('${p.id}')">Obriši</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-ghost" style="padding:.3rem .65rem;font-size:.75rem" onclick="editPost('${p.id}')">Izmeni</button>
+          <button class="btn btn-danger" onclick="doDelete('${p.id}')">Obriši</button>
+        </td>
       </tr>`).join('')}</tbody>
     </table>
     <div style="color:var(--muted);font-size:.78rem;margin-top:.75rem">${brObjava(posts.length)}</div>`;
@@ -1721,7 +1782,6 @@ function parseIgDate(str) {
     const lc = str.toLowerCase();
     for (const [name, mo] of Object.entries(MONTHS)) {
       if (lc.includes(name.toLowerCase())) {
-        // day: first 1-2 digit number surrounded by non-digit chars
         const dayM = str.match(/(?<!\d)(\d{1,2})(?!\d)/);
         if (dayM) return `${yearM[0]}-${mo}-${dayM[1].padStart(2, '0')}`;
         break;
