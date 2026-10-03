@@ -718,8 +718,15 @@ const KEY = 'cpt_v1';
 const load  = ()  => JSON.parse(localStorage.getItem(KEY) || '[]');
 const store = (d) => { localStorage.setItem(KEY, JSON.stringify(d)); pushState(); };
 
+// Obrisane objave pamtimo, da ih spajanje sa cloud-om (pushNow) ne bi vratilo.
+const DELETED_KEY = 'cpt_deleted';
+const loadDeleted = () => JSON.parse(localStorage.getItem(DELETED_KEY) || '[]');
+
 function addPost(p)  { const d = load(); p.id = Date.now()+''; d.push(p); store(d); }
-function delPost(id) { store(load().filter(p => p.id !== id)); }
+function delPost(id) {
+  localStorage.setItem(DELETED_KEY, JSON.stringify([...new Set([...loadDeleted(), id])]));
+  store(load().filter(p => p.id !== id));
+}
 function updatePost(id, data) {
   const d = load();
   const i = d.findIndex(p => p.id === id);
@@ -758,12 +765,39 @@ function pushState() {
   }, 500);
 }
 
+// Objave koje upisuje Instagram Autopilot (id počinje sa "autopilot-"): njihove metrike puni Autopilot,
+// pa za njih važi verzija iz cloud-a.
+const isAutopilot = p => String(p.id || '').startsWith('autopilot-');
+
+// Pre slanja spoji lokalne objave sa onima u cloud-u, da objave koje je dodao neko drugi
+// (drugi uređaj ili Instagram Autopilot) ne nestanu kad ovaj uređaj pošalje svoje stanje.
+async function mergeWithCloud(posts) {
+  const c = getCloud();
+  const res = await fetch(`${c.url}/rest/v1/app_state?id=eq.state&select=data`, { headers: cloudHeaders() });
+  if (!res.ok) return posts;
+  const rows = await res.json();
+  const remote = (rows[0] && rows[0].data && rows[0].data.posts) || [];
+  const deleted = new Set(loadDeleted());
+  const remoteById = new Map(remote.map(p => [p.id, p]));
+  const merged = posts.map(p => (isAutopilot(p) && remoteById.has(p.id) ? remoteById.get(p.id) : p));
+  const have = new Set(merged.map(p => p.id));
+  const extra = remote.filter(p => !have.has(p.id) && !deleted.has(p.id));
+  return merged.concat(extra);
+}
+
 async function pushNow() {
   const c = getCloud();
+  let posts = load();
+  try {
+    posts = await mergeWithCloud(posts);
+    localStorage.setItem(KEY, JSON.stringify(posts)); // bez store(): ne pokreće novi push
+  } catch (e) {
+    console.warn('Spajanje sa cloud-om nije uspelo, šaljem lokalno stanje:', e.message);
+  }
   const res = await fetch(`${c.url}/rest/v1/app_state?on_conflict=id`, {
     method: 'POST',
     headers: cloudHeaders({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }),
-    body: JSON.stringify([{ id: 'state', data: { posts: load(), analyzed: loadAnalyzed() } }])
+    body: JSON.stringify([{ id: 'state', data: { posts, analyzed: loadAnalyzed() } }])
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
 }
